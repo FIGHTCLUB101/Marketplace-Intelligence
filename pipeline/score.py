@@ -74,13 +74,14 @@ def route_channel(loc):
     f = loc.get("fitness") or 0
     a = loc.get("affluence") or 0
     y = loc.get("youth") or 0
+    serviceable = loc.get("qc_serviceable", True)  # default True so signal tests are unaffected
     if loc.get("has_store") and a >= 55:
         return "Offline Shelf-Test"
     top = max(c, f, a)
     if top < 40:
         return "Hold"
     if c == top:
-        return "Blinkit + B2B"
+        return "Blinkit + B2B" if serviceable else "D2C / Offline (no QC reach)"
     if f == top:
         return "Gym Partnership"
     if a == top and y >= 40:

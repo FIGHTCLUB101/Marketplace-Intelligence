@@ -64,3 +64,11 @@ def test_route_channel_priority():
     assert route_channel({"corporate": 10, "fitness": 10, "affluence": 90, "youth": 80, "has_store": False}) == "D2C Subscription"
     assert route_channel({"corporate": 10, "fitness": 10, "affluence": 60, "youth": 10, "has_store": True}) == "Offline Shelf-Test"
     assert route_channel({"corporate": 10, "fitness": 10, "affluence": 10, "youth": 10, "has_store": False}) == "Hold"
+
+
+def test_route_channel_serviceability_override():
+    # corporate-led but no quick-commerce darkstore nearby -> D2C/offline, not Blinkit
+    assert route_channel({"corporate": 90, "fitness": 10, "affluence": 50, "youth": 10,
+                          "has_store": False, "qc_serviceable": False}) == "D2C / Offline (no QC reach)"
+    assert route_channel({"corporate": 90, "fitness": 10, "affluence": 50, "youth": 10,
+                          "has_store": False, "qc_serviceable": True}) == "Blinkit + B2B"
