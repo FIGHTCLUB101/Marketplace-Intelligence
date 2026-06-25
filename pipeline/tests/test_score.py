@@ -3,6 +3,11 @@ from pipeline.score import (
     gym_counts_by_pincode,
     store_pincodes,
     attach_subscores,
+    goat_fit,
+    verdict,
+    route_channel,
+    attach_goat_fit,
+    WEIGHTS,
 )
 
 
@@ -32,3 +37,30 @@ def test_attach_subscores():
     assert locs[0]["affluence"] == 50.0 and locs[1]["affluence"] == 100.0
     assert locs[0]["fitness"] == 100.0 and locs[1]["fitness"] == 50.0
     assert locs[0]["has_store"] is True and locs[1]["has_store"] is False
+
+
+def test_goat_fit_all_present():
+    score, partial = goat_fit({"affluence": 100, "fitness": 100, "corporate": 100, "youth": 100})
+    assert score == 100.0 and partial is False
+
+
+def test_goat_fit_redistributes_when_affluence_missing():
+    loc = {"affluence": None, "fitness": 100, "corporate": 0, "youth": 0}
+    score, partial = goat_fit(loc)
+    assert partial is True
+    assert score == round(100 * (0.30 / 0.65), 2)  # 46.15
+
+
+def test_verdict_bands():
+    assert verdict(70) == "GO"
+    assert verdict(69.9) == "SAMPLE-FIRST"
+    assert verdict(45) == "SAMPLE-FIRST"
+    assert verdict(44.9) == "WAIT"
+
+
+def test_route_channel_priority():
+    assert route_channel({"corporate": 90, "fitness": 10, "affluence": 50, "youth": 10, "has_store": False}) == "Blinkit + B2B"
+    assert route_channel({"corporate": 10, "fitness": 90, "affluence": 50, "youth": 10, "has_store": False}) == "Gym Partnership"
+    assert route_channel({"corporate": 10, "fitness": 10, "affluence": 90, "youth": 80, "has_store": False}) == "D2C Subscription"
+    assert route_channel({"corporate": 10, "fitness": 10, "affluence": 60, "youth": 10, "has_store": True}) == "Offline Shelf-Test"
+    assert route_channel({"corporate": 10, "fitness": 10, "affluence": 10, "youth": 10, "has_store": False}) == "Hold"

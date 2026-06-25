@@ -44,6 +44,7 @@ def load_localities(path):
             "price_mid": parse_price_to_midpoint(r[3]),
             "employment_count": count_named_entities(r[7]),
             "education_count": count_named_entities(r[8]),
+            "commercial_count": count_named_entities(r[14]),
             "employment_raw": r[7], "education_raw": r[8], "commercial_raw": r[14],
             "physical_infra": r[4], "intro": r[5], "social_infra": r[6],
             "transport": r[9], "shopping": r[10], "hospital": r[11],
