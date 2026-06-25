@@ -1,0 +1,22 @@
+# ML notebook stack (Path A — full NLP). Install into the same Python as pipeline/requirements.txt.
+# Windows note: torch needs the MSVC runtime. If `import torch` fails with a c10.dll error,
+# either install the VC++ redistributable (admin) OR `pip install msvc-runtime` (no admin).
+
+pyarrow>=15
+missingno
+scikit-learn>=1.3
+lightgbm
+shap
+sentence-transformers
+transformers
+bertopic
+keybert
+spacy            # then: python -m spacy download en_core_web_sm
+umap-learn
+hdbscan
+networkx
+python-louvain
+node2vec
+geopy
+msvc-runtime     # Windows-only torch DLL fix
+# nbformat / nbconvert / ipykernel are used to build+execute the notebooks
