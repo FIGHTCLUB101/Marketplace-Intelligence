@@ -4,58 +4,62 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GOAT Life — Where to Win</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header>
-  <h1>GOAT <span>Life</span> — Where to Win</h1>
-  <p>Scoring 600 localities, 1,537 gyms, 137 Reliance stores & 4,081 darkstores across 10 cities for GOAT Life's next move.</p>
-  <nav class="nav-tabs">
-    <button class="nav-tab active" data-target="map-view">Map</button>
-    <button class="nav-tab" data-target="leaderboard-view">Leaderboard</button>
-    <button class="nav-tab" data-target="whitespace-view">Whitespace</button>
-    <button class="nav-tab" data-target="gyms-view">Gym Hit-List</button>
-    <button class="nav-tab" data-target="margin-view">Margin Reality</button>
-    <button class="nav-tab" data-target="methodology-view">Methodology</button>
-  </nav>
-</header>
-<main>
-  <div class="stats-row">
-    <div class="stat-card"><div class="stat-label">Localities</div><div class="stat-val" id="stat-localities">0</div></div>
-    <div class="stat-card"><div class="stat-label">GO localities</div><div class="stat-val" id="stat-go" style="color:var(--go)">0</div></div>
-    <div class="stat-card"><div class="stat-label">QC-ready</div><div class="stat-val" id="stat-qc" style="color:var(--goat-gold)">0</div></div>
-    <div class="stat-card"><div class="stat-label">Gyms</div><div class="stat-val" id="stat-gyms">0</div></div>
-    <div class="stat-card"><div class="stat-label">Darkstores</div><div class="stat-val" id="stat-ds">0</div></div>
+  <div class="topbar">
+    <div class="brand">◆ GOAT <span class="d">Life</span> · Where to Win</div>
+    <nav class="tabs">
+      <button class="tab active" data-view="map">Map</button>
+      <button class="tab" data-view="leaderboard">Leaderboard</button>
+      <button class="tab" data-view="gems">Gems</button>
+      <button class="tab" data-view="margin">Margin</button>
+      <button class="tab" data-view="methodology">Method</button>
+    </nav>
   </div>
-  <div id="map-view" class="page-view active">
-    <div class="map-layout">
+
+  <section id="map-view" class="view active">
+    <aside class="ledger">
+      <h4>Decision ledger</h4>
+      <div id="ledger"></div>
+      <div class="sep"></div>
+      <h4>Filter</h4>
+      <select id="f-city"><option value="all">All cities</option></select>
+      <select id="f-verdict">
+        <option value="all">All verdicts</option><option>GO</option><option>SAMPLE-FIRST</option><option>WAIT</option>
+      </select>
+      <select id="f-svc">
+        <option value="all">All serviceability</option><option>Confirmed</option><option>Likely</option><option>Unknown</option>
+      </select>
+      <div class="sep"></div>
+      <h4>Belts</h4>
+      <select id="belt-select"><option value="all">No belt selected</option></select>
+    </aside>
+    <div class="map-wrap">
       <div id="map-container"></div>
-      <div class="map-toggles">
-        <div class="t-title">Darkstores</div>
-        <label><input type="checkbox" id="tg-blinkit" checked><span class="dot" style="background:var(--blinkit)"></span>Blinkit</label>
-        <label><input type="checkbox" id="tg-zepto" checked><span class="dot" style="background:var(--zepto)"></span>Zepto</label>
-        <label><input type="checkbox" id="tg-instamart" checked><span class="dot" style="background:var(--instamart)"></span>Instamart</label>
-        <label><input type="checkbox" id="tg-gyms" checked><span class="dot" style="background:#a1a1aa"></span>Gyms</label>
-        <label><input type="checkbox" id="tg-stores" checked><span class="dot" style="background:#3b82f6"></span>Reliance</label>
-      </div>
-      <div id="inspector"><p class="info">Click a locality on the map to inspect its GOAT-Fit score, verdict, serviceability, and activation playbook.</p></div>
+      <div id="map-stats"></div>
+      <div id="profile"></div>
     </div>
-  </div>
-  <div id="leaderboard-view" class="page-view"><div id="leaderboard"></div></div>
-  <div id="whitespace-view" class="page-view"><div style="height:560px"><canvas id="whitespaceChart"></canvas></div></div>
-  <div id="gyms-view" class="page-view"><div id="gyms"></div></div>
-  <div id="margin-view" class="page-view"><div id="margin"></div></div>
-  <div id="methodology-view" class="page-view"><div id="methodology"></div></div>
-</main>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
-<script src="data-summary.js"></script>
-<script type="module" src="map.js"></script>
-<script type="module" src="charts.js"></script>
-<script type="module" src="margin.js"></script>
-<script type="module" src="methodology.js"></script>
-<script type="module" src="app.js"></script>
+  </section>
+
+  <section id="leaderboard-view" class="view"><div class="pad">
+    <h2 class="vt">Leaderboard</h2><p class="vd">Top localities by GOAT-Fit (ICP), with verdict, serviceability and recommended action.</p>
+    <div id="leaderboard"></div></div></section>
+
+  <section id="gems-view" class="view"><div class="pad">
+    <h2 class="vt">Gems</h2><p class="vd">Pareto-optimal, hidden, and spillover opportunities surfaced from the feature store.</p>
+    <div id="gems"></div></div></section>
+
+  <section id="margin-view" class="view"><div class="pad"><div id="margin"></div></div></section>
+
+  <section id="methodology-view" class="view"><div class="pad"><div id="methodology"></div></div></section>
+
+  <script src="data-localities.js"></script>
+  <script src="data-belts.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
