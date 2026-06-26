@@ -1,5 +1,5 @@
 import os
-from nb08lib import normalize_city, load_darkstores, haversine_km, build_grid, nearest_by_brand, area_core, refine_coordinates
+from nb08lib import normalize_city, load_darkstores, haversine_km, build_grid, nearest_by_brand, area_core, refine_coordinates, precision_radii, confirmed_brands, assign_state, serviceability_confidence
 
 ROOT = r"C:\Users\singh\Desktop\GOATLife"
 
@@ -82,3 +82,35 @@ def test_refine_rejects_out_of_range():
 
     refine_coordinates(recs, geocode_fn, centroids)
     assert all(r["coord_precision"] == "pincode" for r in recs)  # rejected -> keep centroid
+
+
+def test_precision_radii():
+    assert precision_radii("locality") == (3.5, 6.0)
+    assert precision_radii("pincode") == (5.5, 8.0)
+    assert precision_radii("no-geo") == (5.5, 8.0)  # default to wider
+
+
+def test_confirmed_brands():
+    per = {"Blinkit": 1.2, "Zepto": 7.0, "Swiggy Instamart": None}
+    assert confirmed_brands(per, 3.5) == ["Blinkit"]
+    assert confirmed_brands(per, 8.0) == ["Blinkit", "Zepto"]
+
+
+def test_assign_state_confirmed_likely_unknown():
+    # locality precision: confirm 3.5, likely 6.0
+    assert assign_state(2.0, "locality", 5.0, 8.0, "High") == "Confirmed"
+    assert assign_state(5.0, "locality", 5.0, 8.0, "High") == "Likely"      # within likely radius
+    # central locality in High-mapped city, beyond likely radius -> Likely
+    assert assign_state(7.0, "locality", 4.0, 8.0, "High") == "Likely"
+    # peripheral in Low-mapped city, beyond radii -> Unknown
+    assert assign_state(9.0, "locality", 12.0, 8.0, "Low") == "Unknown"
+    # no geo
+    assert assign_state(None, "no-geo", None, None, "Low") == "Unknown"
+
+
+def test_serviceability_confidence():
+    assert serviceability_confidence("Confirmed", "locality", "Low") == "High"
+    assert serviceability_confidence("Confirmed", "pincode", "High") == "Medium"
+    assert serviceability_confidence("Likely", "locality", "High") == "High"
+    assert serviceability_confidence("Likely", "pincode", "Medium") == "Medium"
+    assert serviceability_confidence("Unknown", "locality", "High") == "Low"

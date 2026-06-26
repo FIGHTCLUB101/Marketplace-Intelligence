@@ -94,3 +94,36 @@ def refine_coordinates(records, geocode_fn, city_centroids, accept_km=35.0):
                 continue
         stats["pincode"] += 1
     return stats
+
+
+_CONFIRM = {"locality": 3.5, "pincode": 5.5}
+_LIKELY = {"locality": 6.0, "pincode": 8.0}
+
+
+def precision_radii(coord_precision):
+    return (_CONFIRM.get(coord_precision, 5.5), _LIKELY.get(coord_precision, 8.0))
+
+
+def confirmed_brands(per_brand, confirm_km):
+    return [b for b in BRANDS if per_brand.get(b) is not None and per_brand[b] <= confirm_km]
+
+
+def assign_state(nearest_any, coord_precision, dist_to_centroid, city_median_centroid, city_coverage_conf):
+    if nearest_any is None:
+        return "Unknown"
+    confirm_km, likely_km = precision_radii(coord_precision)
+    if nearest_any <= confirm_km:
+        return "Confirmed"
+    is_central = (dist_to_centroid is not None and city_median_centroid is not None
+                  and dist_to_centroid <= city_median_centroid)
+    if nearest_any <= likely_km or (city_coverage_conf in ("High", "Medium") and is_central):
+        return "Likely"
+    return "Unknown"
+
+
+def serviceability_confidence(state, coord_precision, city_coverage_conf):
+    if state == "Confirmed":
+        return "High" if coord_precision == "locality" else "Medium"
+    if state == "Likely":
+        return "High" if city_coverage_conf == "High" else "Medium"
+    return "Low"
