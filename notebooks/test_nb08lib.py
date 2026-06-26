@@ -131,3 +131,15 @@ def test_gtm_action_matrix():
     assert gtm_action("SAMPLE-FIRST", "Unknown") == "SAMPLE (D2C / offline)"
     assert gtm_action("WAIT", "Confirmed") == "HOLD"
     assert gtm_action("WAIT", "Unknown") == "HOLD"
+
+
+def test_refine_handles_nan_coords():
+    recs = [{"AREA": "NaN Area, Bangalore", "ADDRESS": "Bangalore", "lat": float("nan"), "lng": float("nan")}]
+    stats = refine_coordinates(recs, lambda q: None, {"Bangalore": (12.95, 77.60)})
+    assert recs[0]["coord_precision"] == "no-geo"
+    assert recs[0]["lat_r"] is None
+    assert stats["no_geo"] == 1
+
+
+def test_assign_state_nan_is_unknown():
+    assert assign_state(float("nan"), "locality", 1.0, 5.0, "High") == "Unknown"

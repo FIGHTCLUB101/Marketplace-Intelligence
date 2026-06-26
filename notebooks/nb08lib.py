@@ -67,15 +67,18 @@ def area_core(area):
 
 
 def refine_coordinates(records, geocode_fn, city_centroids, accept_km=35.0):
+    def _missing(v):
+        return v is None or (isinstance(v, float) and math.isnan(v))
+
     # which (lat,lng) coordinates are shared by >=2 geocoded records
     counts = defaultdict(int)
     for r in records:
-        if r["lat"] is not None and r["lng"] is not None:
+        if not _missing(r["lat"]) and not _missing(r["lng"]):
             counts[(r["lat"], r["lng"])] += 1
 
     stats = {"refined": 0, "pincode": 0, "no_geo": 0}
     for r in records:
-        if r["lat"] is None or r["lng"] is None:
+        if _missing(r["lat"]) or _missing(r["lng"]):
             r["lat_r"], r["lng_r"], r["coord_precision"] = None, None, "no-geo"
             stats["no_geo"] += 1
             continue
@@ -109,7 +112,7 @@ def confirmed_brands(per_brand, confirm_km):
 
 
 def assign_state(nearest_any, coord_precision, dist_to_centroid, city_median_centroid, city_coverage_conf):
-    if nearest_any is None:
+    if nearest_any is None or (isinstance(nearest_any, float) and math.isnan(nearest_any)):
         return "Unknown"
     confirm_km, likely_km = precision_radii(coord_precision)
     if nearest_any <= confirm_km:
