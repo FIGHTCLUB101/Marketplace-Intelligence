@@ -28,6 +28,7 @@ export function initMap() {
     center: [78.9629, 20.5937], zoom: 4.4, minZoom: 3, maxZoom: 16,
   });
   map.addControl(new maplibregl.NavigationControl(), 'top-right');
+  window._map = map;
 
   map.on('load', async () => {
     try {

@@ -23,7 +23,12 @@ COLS = ["AREA", "ADDRESS", "PINCODE", "lat", "lng", "icp_score", "icp_verdict", 
         "res_avg_buy_imputed", "price_is_imputed", "employer_quality", "primary_sector",
         "is_metro_connected", "belt_id", "belt_size", "pareto_optimal", "hidden_gem_v2", "spillover_gem"]
 
-geo = df[df["lat"].notna()][COLS].copy()
+# Plot the NB08 Nominatim-REFINED coordinates (lat_r/lng_r), not the coarse pincode-centroid
+# lat/lng — they fix ~596 localities whose original centroids were wrong (e.g. Kolkata +40km east).
+src = df[df["lat_r"].notna()].copy()
+geo = src[COLS].copy()
+geo["lat"] = src["lat_r"].to_numpy()
+geo["lng"] = src["lng_r"].to_numpy()
 geo["color"] = geo["gtm_action"].map(contract.GTM_COLORS).fillna(contract.GTM_DEFAULT_COLOR)
 for c in ["icp_score", "res_avg_buy_imputed", "nearest_known_darkstore_km", "employer_quality"]:
     geo[c] = geo[c].round(1)
