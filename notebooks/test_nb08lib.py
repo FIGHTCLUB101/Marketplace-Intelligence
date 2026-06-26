@@ -1,5 +1,5 @@
 import os
-from nb08lib import normalize_city, load_darkstores, haversine_km, build_grid, nearest_by_brand, area_core, refine_coordinates, precision_radii, confirmed_brands, assign_state, serviceability_confidence
+from nb08lib import normalize_city, load_darkstores, haversine_km, build_grid, nearest_by_brand, area_core, refine_coordinates, precision_radii, confirmed_brands, assign_state, serviceability_confidence, coverage_confidence_buckets, gtm_action
 
 ROOT = r"C:\Users\singh\Desktop\GOATLife"
 
@@ -114,3 +114,20 @@ def test_serviceability_confidence():
     assert serviceability_confidence("Likely", "locality", "High") == "High"
     assert serviceability_confidence("Likely", "pincode", "Medium") == "Medium"
     assert serviceability_confidence("Unknown", "locality", "High") == "Low"
+
+
+def test_coverage_confidence_buckets():
+    counts = {"A": 300, "B": 200, "C": 100, "D": 50, "E": 20, "F": 10}
+    b = coverage_confidence_buckets(counts)
+    assert b["A"] == "High" and b["F"] == "Low"
+    assert set(b.values()) <= {"High", "Medium", "Low"}
+
+
+def test_gtm_action_matrix():
+    assert gtm_action("GO", "Confirmed") == "PUSH-NOW"
+    assert gtm_action("GO", "Likely") == "PUSH-NOW"
+    assert gtm_action("GO", "Unknown") == "D2C / OFFLINE - verify QC"
+    assert gtm_action("SAMPLE-FIRST", "Confirmed") == "SAMPLE + QC test"
+    assert gtm_action("SAMPLE-FIRST", "Unknown") == "SAMPLE (D2C / offline)"
+    assert gtm_action("WAIT", "Confirmed") == "HOLD"
+    assert gtm_action("WAIT", "Unknown") == "HOLD"

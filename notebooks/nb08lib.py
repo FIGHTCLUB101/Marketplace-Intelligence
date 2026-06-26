@@ -127,3 +127,30 @@ def serviceability_confidence(state, coord_precision, city_coverage_conf):
     if state == "Likely":
         return "High" if city_coverage_conf == "High" else "Medium"
     return "Low"
+
+
+def coverage_confidence_buckets(city_counts):
+    vals = sorted(city_counts.values())
+    if not vals:
+        return {}
+    t33 = vals[int(len(vals) * 0.33)]
+    t67 = vals[int(len(vals) * 0.67)]
+    out = {}
+    for city, n in city_counts.items():
+        out[city] = "High" if n >= t67 else ("Medium" if n >= t33 else "Low")
+    return out
+
+
+_GTM = {
+    ("GO", "reachable"): "PUSH-NOW",
+    ("GO", "Unknown"): "D2C / OFFLINE - verify QC",
+    ("SAMPLE-FIRST", "reachable"): "SAMPLE + QC test",
+    ("SAMPLE-FIRST", "Unknown"): "SAMPLE (D2C / offline)",
+    ("WAIT", "reachable"): "HOLD",
+    ("WAIT", "Unknown"): "HOLD",
+}
+
+
+def gtm_action(icp_verdict, state):
+    key = "Unknown" if state == "Unknown" else "reachable"
+    return _GTM.get((icp_verdict, key), "REVIEW")
