@@ -10,3 +10,5 @@ notebooks/artifacts/
 # generated notebook exports
 notebooks/*.csv
 notebooks/*.xlsx
+
+scripts/exports/
