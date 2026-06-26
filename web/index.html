@@ -15,14 +15,16 @@
     <nav class="tabs">
       <button class="tab active" data-view="map">Map</button>
       <button class="tab" data-view="leaderboard">Leaderboard</button>
-      <button class="tab" data-view="gems">Gems</button>
-      <button class="tab" data-view="sequence">Sequence</button>
-      <button class="tab" data-view="margin">Margin</button>
+      <button class="tab" data-view="gems">Untapped Markets</button>
+      <button class="tab" data-view="sequence">Launch Roadmap</button>
+      <button class="tab" data-view="margin">Unit Economics</button>
       <button class="tab" data-view="methodology">Method</button>
     </nav>
   </div>
 
   <section id="map-view" class="view active">
+    <div class="kpi-ribbon" id="kpi-ribbon"></div>
+    <div class="map-body">
     <aside class="ledger">
       <h4>Decision ledger</h4>
       <div id="ledger"></div>
@@ -44,6 +46,7 @@
       <div id="map-stats"></div>
       <div id="profile"></div>
     </div>
+    </div>
   </section>
 
   <section id="leaderboard-view" class="view"><div class="pad">
@@ -51,7 +54,7 @@
     <div id="leaderboard"></div></div></section>
 
   <section id="gems-view" class="view"><div class="pad">
-    <h2 class="vt">Gems</h2><p class="vd">Pareto-optimal, hidden, and spillover opportunities surfaced from the feature store.</p>
+    <h2 class="vt">Untapped Markets</h2><p class="vd">Which localities have strong demand but thin coverage or low prices — pareto-optimal, hidden, and spillover opportunities.</p>
     <div id="gems"></div></div></section>
 
   <section id="sequence-view" class="view"><div class="pad"><div id="sequence"></div></div></section>

@@ -48,7 +48,7 @@ export function renderSequence() {
   const cities = [...new Set(L.map((l) => l.ADDRESS))].sort();
   const el = document.getElementById('sequence');
   el.innerHTML = `
-    <h2 class="vt">Attack sequence</h2>
+    <h2 class="vt">Launch Roadmap</h2>
     <p class="vd">Pick a city, platform and monthly budget. The engine sequences localities into activation
       waves by demand × serviceability × lifecycle, and fits them to budget (costs grounded in GOAT Life's disclosed spend).</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">

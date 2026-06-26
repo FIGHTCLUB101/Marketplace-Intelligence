@@ -1,5 +1,4 @@
-import { initMap, resizeMap, setMapFilter, highlightBelt } from './locality-map.js';
-import { buildFilter } from './filters.js';
+import { initMap, resizeMap, setLocalityData, highlightBelt } from './locality-map.js';
 import { colorFor, labelFor, GTM_ACTIONS } from './contract.js';
 import { renderLeaderboard, renderGems, renderMethodology } from './views.js';
 import { renderSequence } from './sequence.js';
@@ -10,6 +9,7 @@ const L = window.LOCALITIES || [];
 const BELTS = window.BELTS || [];
 const activeGtm = new Set();          // empty = all actions shown
 const sel = { city: 'all', verdict: 'all', serviceability: 'all' };
+const truthy = (v) => v === true || v === 'true' || v === 'True';
 
 const matches = (l) =>
   (sel.city === 'all' || l.ADDRESS === sel.city) &&
@@ -18,12 +18,24 @@ const matches = (l) =>
   (activeGtm.size === 0 || activeGtm.has(l.gtm_action));
 
 function applyFilter() {
-  setMapFilter(buildFilter({ ...sel, gtm: activeGtm.size ? activeGtm : null }));
   const vis = L.filter(matches);
+  setLocalityData(vis);
   const push = vis.filter((l) => l.gtm_action === 'PUSH-NOW').length;
   const samp = vis.filter((l) => l.gtm_action.startsWith('SAMPLE')).length;
   document.getElementById('map-stats').innerHTML =
     `<b>${vis.length}</b> localities · <b>${push}</b> push-now · <b>${samp}</b> sample`;
+}
+
+function renderKpis() {
+  const mapped = L.length;
+  const push = L.filter((l) => l.gtm_action === 'PUSH-NOW').length;
+  const gems = L.filter((l) => truthy(l.pareto_optimal) || truthy(l.hidden_gem_v2) || truthy(l.spillover_gem)).length;
+  const conf = mapped ? Math.round(100 * L.filter((l) => l.serviceability_state === 'Confirmed').length / mapped) : 0;
+  document.getElementById('kpi-ribbon').innerHTML = `
+    <div class="kpi"><div class="kn">1,001<span class="ks">${mapped} mapped</span></div><div class="kl">Localities analysed</div></div>
+    <div class="kpi"><div class="kn" style="color:#059669">${push}</div><div class="kl">Ready to launch · push-now</div></div>
+    <div class="kpi"><div class="kn">${gems}</div><div class="kl">Untapped markets</div></div>
+    <div class="kpi"><div class="kn">${conf}%</div><div class="kl">Quick-commerce confirmed</div></div>`;
 }
 
 function buildLedger() {
@@ -57,6 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
     bsel.appendChild(o);
   });
 
+  renderKpis();
   buildLedger();
   initMap();
   AppState.initMargin && AppState.initMargin();
@@ -65,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('f-city').addEventListener('change', (e) => { sel.city = e.target.value; applyFilter(); });
   document.getElementById('f-verdict').addEventListener('change', (e) => { sel.verdict = e.target.value; applyFilter(); });
   document.getElementById('f-svc').addEventListener('change', (e) => { sel.serviceability = e.target.value; applyFilter(); });
-  bsel.addEventListener('change', (e) => highlightBelt(e.target.value));
+  bsel.addEventListener('change', (e) => (e.target.value === 'all' ? applyFilter() : highlightBelt(e.target.value)));
 
   const rendered = {};
   document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => {

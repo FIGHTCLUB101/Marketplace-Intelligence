@@ -13,7 +13,13 @@ body{font-family:var(--sans);background:var(--paper);color:var(--ink);height:100
 .tab.active{color:var(--ink);background:#F1EFE8}
 .view{flex:1;display:none;overflow:auto}
 .view.active{display:block}
-#map-view.active{display:grid;grid-template-columns:212px 1fr;overflow:hidden}
+#map-view.active{display:flex;flex-direction:column;overflow:hidden}
+.map-body{flex:1;display:grid;grid-template-columns:212px 1fr;overflow:hidden;min-height:0}
+.kpi-ribbon{display:flex;background:var(--surface);border-bottom:1px solid var(--line);flex-shrink:0}
+.kpi{padding:11px 22px;border-right:1px solid var(--line)}
+.kn{font-family:var(--mono);font-size:22px;font-weight:600;line-height:1}
+.kn .ks{font-size:11px;font-weight:400;color:var(--muted);margin-left:5px}
+.kl{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-top:5px}
 .ledger{border-right:1px solid var(--line);padding:16px 14px;background:var(--surface);overflow:auto}
 .ledger h4{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px}
 .lrow{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:13px}

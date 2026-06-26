@@ -1,23 +1,25 @@
 import { colorFor, labelFor } from './contract.js';
 
 const L = window.LOCALITIES || [];
+L.forEach((l, i) => (l._idx = i));
 let map;
-
 const truthy = (v) => v === true || v === 'true' || v === 'True';
 
-function localityFeatures() {
+function fc(records) {
   return {
     type: 'FeatureCollection',
-    features: L.map((l, i) => ({
+    features: records.map((l) => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [+l.lng, +l.lat] },
-      properties: {
-        _i: i, color: l.color, icp_score: +l.icp_score, ADDRESS: l.ADDRESS,
-        icp_verdict: l.icp_verdict, serviceability_state: l.serviceability_state,
-        gtm_action: l.gtm_action, belt_id: l.belt_id,
-      },
+      properties: { _i: l._idx, color: l.color, icp_score: +l.icp_score },
     })),
   };
+}
+
+// Filtering updates the SOURCE data (not a layer filter) so cluster counts recompute correctly.
+export function setLocalityData(records) {
+  const s = map && map.getSource('localities');
+  if (s) s.setData(fc(records));
 }
 
 export function initMap() {
@@ -39,33 +41,54 @@ export function initMap() {
       });
       Object.entries(DSC).forEach(([b, c]) => map.addLayer({
         id: 'ds-' + b, type: 'circle', source: 'darkstores', filter: ['==', ['get', 'brand'], b],
-        paint: { 'circle-radius': 2, 'circle-color': c, 'circle-opacity': 0.32 },
+        paint: { 'circle-radius': 2, 'circle-color': c, 'circle-opacity': 0.30 },
       }));
     } catch (e) { console.warn('darkstores load failed', e); }
 
-    map.addSource('localities', { type: 'geojson', data: localityFeatures() });
+    // Localities, clustered: neutral count bubbles at macro zoom -> status-colored dots at city zoom.
+    map.addSource('localities', { type: 'geojson', data: fc(L), cluster: true, clusterRadius: 46, clusterMaxZoom: 8 });
     map.addLayer({
-      id: 'locality-circles', type: 'circle', source: 'localities',
+      id: 'clusters', type: 'circle', source: 'localities', filter: ['has', 'point_count'],
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['get', 'icp_score'], 0, 4, 100, 11],
-        'circle-color': ['get', 'color'],
-        'circle-stroke-width': 1.2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.9,
+        'circle-color': '#FFFFFF', 'circle-opacity': 0.92,
+        'circle-stroke-color': '#888780', 'circle-stroke-width': 1.5,
+        'circle-radius': ['step', ['get', 'point_count'], 13, 10, 18, 50, 24],
       },
     });
+    map.addLayer({
+      id: 'cluster-count', type: 'symbol', source: 'localities', filter: ['has', 'point_count'],
+      layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Regular'], 'text-size': 12 },
+      paint: { 'text-color': '#1A1A1A' },
+    });
+    map.addLayer({
+      id: 'locality-circles', type: 'circle', source: 'localities', filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['get', 'icp_score'], 0, 4, 100, 11],
+        'circle-color': ['get', 'color'], 'circle-stroke-width': 1.2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.9,
+      },
+    });
+
+    map.on('click', 'clusters', (e) => {
+      const f = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0];
+      map.getSource('localities').getClusterExpansionZoom(f.properties.cluster_id, (err, z) => {
+        if (!err) map.easeTo({ center: f.geometry.coordinates, zoom: z, duration: 500 });
+      });
+    });
     map.on('click', 'locality-circles', (e) => showProfile(L[e.features[0].properties._i]));
-    map.on('mouseenter', 'locality-circles', () => (map.getCanvas().style.cursor = 'pointer'));
-    map.on('mouseleave', 'locality-circles', () => (map.getCanvas().style.cursor = ''));
+    ['clusters', 'locality-circles'].forEach((ly) => {
+      map.on('mouseenter', ly, () => (map.getCanvas().style.cursor = 'pointer'));
+      map.on('mouseleave', ly, () => (map.getCanvas().style.cursor = ''));
+    });
   });
 }
 
 export function resizeMap() { if (map) setTimeout(() => map.resize(), 80); }
-export function setMapFilter(expr) { if (map && map.getLayer('locality-circles')) map.setFilter('locality-circles', expr); }
 
 export function highlightBelt(beltId) {
-  if (beltId === 'all') { setMapFilter(null); return; }
+  if (beltId === 'all') { setLocalityData(L); return; }
   const id = +beltId;
-  setMapFilter(['==', ['get', 'belt_id'], id]);
   const m = L.filter((l) => +l.belt_id === id);
+  setLocalityData(m);
   if (!m.length || !map) return;
   const lngs = m.map((l) => +l.lng), lats = m.map((l) => +l.lat);
   map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
