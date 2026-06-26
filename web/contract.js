@@ -23,3 +23,15 @@ export const GTM_LABELS = {
 
 export const colorFor = (a) => GTM_COLORS[a] || GTM_DEFAULT_COLOR;
 export const labelFor = (a) => GTM_LABELS[a] || a;
+
+// Per-locality activation-cost estimates (INR), mirror of contract.py (grounded in GOAT Life's
+// disclosed economics — see contract.py). Used by the attack-sequence engine.
+export const ACTIVATION_COST = {
+  'Premium · Metro': 20000, 'Premium': 18000,
+  'Full-infra · Metro': 13000, 'Amenity-rich · Metro': 13000,
+  'Employer-dense · Metro': 12000, 'Metro': 11000,
+  'Healthcare-rich · Full-infra': 10000, 'Well-connected': 9000,
+  'Employer-dense': 9000, 'Average / Mixed': 6000,
+};
+export const ACTIVATION_COST_DEFAULT = 10000;
+export const costFor = (arch) => ACTIVATION_COST[arch] || ACTIVATION_COST_DEFAULT;

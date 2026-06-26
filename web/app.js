@@ -2,6 +2,7 @@ import { initMap, resizeMap, setMapFilter, highlightBelt } from './locality-map.
 import { buildFilter } from './filters.js';
 import { colorFor, labelFor, GTM_ACTIONS } from './contract.js';
 import { renderLeaderboard, renderGems, renderMethodology } from './views.js';
+import { renderSequence } from './sequence.js';
 import AppState from './state.js';
 import './margin.js';
 
@@ -74,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (v === 'map') resizeMap();
     if (v === 'leaderboard' && !rendered.lb) { renderLeaderboard(); rendered.lb = 1; }
     if (v === 'gems' && !rendered.gems) { renderGems(); rendered.gems = 1; }
+    if (v === 'sequence' && !rendered.seq) { renderSequence(); rendered.seq = 1; }
   }));
 
   setTimeout(applyFilter, 300);
