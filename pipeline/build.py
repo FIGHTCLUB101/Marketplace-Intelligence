@@ -18,9 +18,9 @@ def build(root):
     os.makedirs(web, exist_ok=True)
     g = make_geocoder()
 
-    localities = load_localities(os.path.join(root, "magicbricks_localities.xlsx"))
-    gyms = load_gyms(os.path.join(root, "justdial_gyms_manual.xlsx"))
-    stores = load_stores(os.path.join(root, "reliance_smart_bazaar_stores.xlsx"))
+    localities = load_localities(os.path.join(root, "data", "magicbricks_localities.xlsx"))
+    gyms = load_gyms(os.path.join(root, "data", "justdial_gyms_manual.xlsx"))
+    stores = load_stores(os.path.join(root, "data", "reliance_smart_bazaar_stores.xlsx"))
 
     mb_stats = attach_coords(localities, pin_key="pincode", geocode=g)
     gym_stats = attach_coords(gyms, pin_key="pincode", addr_key="addr", geocode=g)

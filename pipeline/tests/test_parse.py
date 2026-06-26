@@ -33,7 +33,7 @@ def test_count_named_entities():
 
 
 def test_load_localities_shape():
-    rows = load_localities(os.path.join(ROOT, "magicbricks_localities.xlsx"))
+    rows = load_localities(os.path.join(ROOT, "data", "magicbricks_localities.xlsx"))
     assert len(rows) == 600
     r = rows[0]
     assert set(["area", "city", "pincode", "price_mid", "employment_count", "education_count"]).issubset(r)
@@ -44,8 +44,8 @@ def test_load_localities_shape():
 
 
 def test_load_gyms_and_stores():
-    gyms = load_gyms(os.path.join(ROOT, "justdial_gyms_manual.xlsx"))
-    stores = load_stores(os.path.join(ROOT, "reliance_smart_bazaar_stores.xlsx"))
+    gyms = load_gyms(os.path.join(ROOT, "data", "justdial_gyms_manual.xlsx"))
+    stores = load_stores(os.path.join(ROOT, "data", "reliance_smart_bazaar_stores.xlsx"))
     assert len(gyms) == 1537
     assert len(stores) == 137
     assert "addr" in gyms[0] and "pincode" in stores[0]
