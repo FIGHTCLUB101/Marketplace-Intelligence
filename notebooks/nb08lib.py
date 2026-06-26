@@ -39,7 +39,9 @@ def build_grid(stores, cell=0.1):
 
 
 def nearest_by_brand(lat, lng, grid, scan_km=10.0, cell=0.1):
-    span = int(scan_km / 11) + 1  # ~11 km per 0.1deg cell
+    # Use a conservative 8 km/cell divisor: a 0.1deg longitude cell is only ~9.8 km
+    # at 28N, so dividing by 11 could miss stores near a cell boundary. 8.0 over-covers.
+    span = int(scan_km / 8.0) + 1
     gk = (int(lat // cell), int(lng // cell))
     per_brand = {b: None for b in BRANDS}
     n_within_3km = 0
@@ -51,7 +53,7 @@ def nearest_by_brand(lat, lng, grid, scan_km=10.0, cell=0.1):
                 if d > scan_km:
                     continue
                 b = s["brand"]
-                if per_brand.get(b) is None or d < per_brand[b]:
+                if b in per_brand and (per_brand[b] is None or d < per_brand[b]):
                     per_brand[b] = round(d, 2)
                 if nearest_any is None or d < nearest_any:
                     nearest_any = round(d, 2)
