@@ -1,5 +1,5 @@
 import os
-from nb08lib import normalize_city, load_darkstores, haversine_km, build_grid, nearest_by_brand
+from nb08lib import normalize_city, load_darkstores, haversine_km, build_grid, nearest_by_brand, area_core, refine_coordinates
 
 ROOT = r"C:\Users\singh\Desktop\GOATLife"
 
@@ -38,3 +38,47 @@ def test_nearest_by_brand():
     assert r["per_brand"]["Swiggy Instamart"] is None
     assert r["nearest_any"] == r["per_brand"]["Blinkit"]
     assert r["n_within_3km"] >= 2
+
+
+def test_area_core():
+    assert area_core("Sector 47, Gurgaon") == "sector 47"
+
+
+def test_refine_coordinates_with_fake_geocoder():
+    # Two localities share one pincode centroid; one is uniquely placed; one has no geo.
+    recs = [
+        {"AREA": "Koramangala, Bangalore", "ADDRESS": "Bangalore", "lat": 12.95, "lng": 77.60},
+        {"AREA": "Indiranagar, Bangalore", "ADDRESS": "Bangalore", "lat": 12.95, "lng": 77.60},
+        {"AREA": "Unique Area, Bangalore", "ADDRESS": "Bangalore", "lat": 12.90, "lng": 77.55},
+        {"AREA": "NoGeo Area, Bangalore", "ADDRESS": "Bangalore", "lat": None, "lng": None},
+    ]
+    centroids = {"Bangalore": (12.95, 77.60)}
+    fake = {
+        "koramangala, bangalore, india": (12.935, 77.624),
+        "indiranagar, bangalore, india": (12.971, 77.640),
+    }
+
+    def geocode_fn(q):
+        return fake.get(q.lower())
+
+    stats = refine_coordinates(recs, geocode_fn, centroids)
+    assert recs[0]["coord_precision"] == "locality" and recs[0]["lat_r"] == 12.935
+    assert recs[1]["coord_precision"] == "locality"
+    assert recs[2]["coord_precision"] == "locality"        # unique coord, not shared -> locality, unchanged
+    assert recs[2]["lat_r"] == 12.90
+    assert recs[3]["coord_precision"] == "no-geo"
+    assert stats["refined"] == 2 and stats["no_geo"] == 1
+
+
+def test_refine_rejects_out_of_range():
+    recs = [
+        {"AREA": "A, Bangalore", "ADDRESS": "Bangalore", "lat": 12.95, "lng": 77.60},
+        {"AREA": "B, Bangalore", "ADDRESS": "Bangalore", "lat": 12.95, "lng": 77.60},
+    ]
+    centroids = {"Bangalore": (12.95, 77.60)}
+
+    def geocode_fn(q):
+        return (28.6, 77.2)  # Delhi — >35km from Bangalore centroid -> reject
+
+    refine_coordinates(recs, geocode_fn, centroids)
+    assert all(r["coord_precision"] == "pincode" for r in recs)  # rejected -> keep centroid
