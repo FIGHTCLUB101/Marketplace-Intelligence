@@ -6,3 +6,7 @@ node_modules/
 structured_magicbricks_localities.csv
 .ipynb_checkpoints/
 notebooks/artifacts/
+
+# generated notebook exports
+notebooks/*.csv
+notebooks/*.xlsx
