@@ -4,37 +4,65 @@ _Generated from 1001 localities across 10 cities (magicbricks ML pipeline, noteb
 ## Top 15 ICP localities (demand-context attractiveness)
 | AREA | ADDRESS | icp_score | icp_verdict | archetype_ml |
 | --- | --- | --- | --- | --- |
-| Koramangala, Bangalore | Bangalore | 89.8 | GO | Full-infra · Metro |
-| Vile Parle West, Mumbai | Mumbai | 88.7 | GO | Premium · Metro |
-| Shivaji Park, Mumbai | Mumbai | 87.5 | GO | Premium · Metro |
-| Kurla West, Mumbai | Mumbai | 87.0 | GO | Premium · Metro |
-| Bandra East, Mumbai | Mumbai | 86.4 | GO | Premium · Metro |
-| Sushant Lok, Gurgaon | Gurugram | 85.8 | GO | Amenity-rich · Metro |
-| Saket, New Delhi | New Delhi | 85.7 | GO | Amenity-rich · Metro |
-| Chakala, Mumbai | Mumbai | 85.6 | GO | Premium · Metro |
-| Versova Andheri West, Mumbai | Mumbai | 84.7 | GO | Premium · Metro |
-| East Patel Nagar, New Delhi | New Delhi | 84.0 | GO | Employer-dense |
-| Vikhroli West, Mumbai | Mumbai | 83.6 | GO | Premium · Metro |
-| Lower Parel, Mumbai | Mumbai | 83.2 | GO | Premium · Metro |
-| Banjara Hills, Hyderabad | Hyderabad | 83.1 | GO | Healthcare-rich · Full-infra |
-| Andheri West, Mumbai | Mumbai | 82.5 | GO | Premium · Metro |
-| Safdarjung Development Area, New Delhi | New Delhi | 81.9 | GO | Amenity-rich · Metro |
+| Sushant Lok, Gurgaon | Gurugram | 88.5 | GO | Amenity-rich · Metro |
+| Saket, New Delhi | New Delhi | 88.0 | GO | Amenity-rich · Metro |
+| Sector 43, Gurgaon | Gurugram | 87.0 | GO | Well-connected |
+| Phase 2 DLF, Gurgaon | Gurugram | 84.9 | GO | Amenity-rich · Metro |
+| Powai, Mumbai | Mumbai | 84.1 | GO | Full-infra · Metro |
+| Banjara Hills, Hyderabad | Hyderabad | 84.0 | GO | Healthcare-rich · Full-infra |
+| Sector 47, Gurgaon | Gurugram | 83.8 | GO | Well-connected |
+| Andheri West, Mumbai | Mumbai | 83.6 | GO | Premium · Metro |
+| Baner, Pune | Pune | 83.0 | GO | Premium · Metro |
+| Vile Parle West, Mumbai | Mumbai | 82.7 | GO | Premium · Metro |
+| Sector 53, Gurgaon | Gurugram | 82.5 | GO | Well-connected |
+| Alipore, Kolkata | Kolkata | 82.3 | GO | Employer-dense · Metro |
+| Koramangala, Bangalore | Bangalore | 82.0 | GO | Full-infra · Metro |
+| Lajpat Nagar 3, New Delhi | New Delhi | 81.5 | GO | Amenity-rich · Metro |
+| Mogappair, Chennai | Chennai | 81.2 | GO | Metro |
 
-## Hidden gems (67) — attractive but under-priced / under-covered
+## Hidden gems (70) — attractive but under-priced / under-covered
 | AREA | ADDRESS | icp_score | res_avg_buy_imputed | price_is_imputed |
 | --- | --- | --- | --- | --- |
-| Chakala, Mumbai | Mumbai | 85.6 | 35720.0 | True |
-| East Patel Nagar, New Delhi | New Delhi | 84.0 | 26820.0 | True |
-| New Rajendra Nagar, New Delhi | New Delhi | 79.5 | 25746.0 | True |
-| JP Nagar, Bangalore | Bangalore | 78.8 | 9850.0 | False |
-| Sector 38, Gurgaon | Gurugram | 77.9 | 21477.0 | True |
-| Sector 39, Gurgaon | Gurugram | 77.8 | 20587.0 | True |
-| Mogappair, Chennai | Chennai | 77.1 | 12088.0 | True |
-| Ballygunge, Kolkata | Kolkata | 76.8 | 10600.0 | False |
-| Block B Sushant Lok Phase 1, Gurgaon | Gurugram | 76.7 | 18688.0 | True |
-| Old Rajinder Nagar, New Delhi | New Delhi | 75.0 | 19752.0 | True |
-| Sushant Lok 2 Sector 57, Gurgaon | Gurugram | 74.7 | 28550.0 | True |
-| Mahipalpur, New Delhi | New Delhi | 74.7 | 28494.0 | True |
+| Mogappair, Chennai | Chennai | 81.2 | 15774.0 | True |
+| Block B Sushant Lok Phase 1, Gurgaon | Gurugram | 79.9 | 20761.0 | True |
+| Ballygunge, Kolkata | Kolkata | 76.7 | 10600.0 | False |
+| JP Nagar, Bangalore | Bangalore | 76.1 | 9850.0 | False |
+| Chakala, Mumbai | Mumbai | 75.1 | 24140.0 | True |
+| Part 2 Sector 15, Gurgaon | Gurugram | 74.9 | 33802.0 | True |
+| Miyapur, Hyderabad | Hyderabad | 74.2 | 7600.0 | False |
+| Sector 11, Chandigarh | Chandigarh | 73.6 | 22281.0 | True |
+| Sector 4, Gurgaon | Gurugram | 73.1 | 20040.0 | True |
+| New Rajendra Nagar, New Delhi | New Delhi | 73.1 | 20732.0 | True |
+| Sector 15, Chandigarh | Chandigarh | 72.3 | 19372.0 | True |
+| Ramapuram, Chennai | Chennai | 72.3 | 10550.0 | False |
+
+## Spillover gems (38) - cheaper than graph neighbours (spatial arbitrage)
+| AREA | ADDRESS | price_gap_pct | res_avg_buy | neighbor_avg_price |
+| --- | --- | --- | --- | --- |
+| Banaswadi, Bangalore | Bangalore | 0.42 | 9650.0 | 16500.0 |
+| Ramapuram, Chennai | Chennai | 0.38 | 10550.0 | 17000.0 |
+| Kalkaji, New Delhi | New Delhi | 0.36 | 16150.0 | 25400.0 |
+| Tollygunge, Kolkata | Kolkata | 0.36 | 6450.0 | 10050.0 |
+| Garia, Kolkata | Kolkata | 0.36 | 4650.0 | 7233.0 |
+| Ardee City, Gurgaon | Gurugram | 0.33 | 10650.0 | 15990.0 |
+| Phase 1 DLF, Gurgaon | Gurugram | 0.33 | 17050.0 | 25575.0 |
+| Sector 56, Gurgaon | Gurugram | 0.33 | 12450.0 | 18600.0 |
+| Sector 55, Gurgaon | Gurugram | 0.32 | 12650.0 | 18600.0 |
+| Mehrauli Gurgaon Road, Gurgaon | Gurugram | 0.32 | 17500.0 | 25575.0 |
+
+## Top affluence drivers (SHAP, from NB06)
+| Feature | Mean abs(SHAP) |
+| --- | --- |
+| neighbor_avg_price | 4463.3 |
+| city_target_enc | 2241.2 |
+| primary_sector_score | 400.7 |
+| emb_pc5 | 333.9 |
+| dist_to_city_centroid_km | 316.8 |
+| amenity_diversity | 312.2 |
+| sector_retail_and_commercial | 311.7 |
+| emb_pc16 | 271.9 |
+| emb_pc6 | 266.3 |
+| emb_pc17 | 264.2 |
 
 ## Data-driven archetypes (NB05)
 | archetype | n |
