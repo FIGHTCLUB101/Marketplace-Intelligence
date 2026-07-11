@@ -12,3 +12,6 @@ notebooks/*.csv
 notebooks/*.xlsx
 
 scripts/exports/
+
+# local secrets
+.env
