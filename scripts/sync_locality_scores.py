@@ -47,7 +47,11 @@ def build_locality_rows(df: pd.DataFrame) -> list[dict]:
             "belt_id": _clean(r.get("belt_id")),
             "belt_size": _clean(r.get("belt_size")),
         })
-    return rows
+    # De-dupe by loc_key, last-wins: Postgres raises "ON CONFLICT DO UPDATE
+    # command cannot affect row a second time" if execute_values below is
+    # handed two rows with the same loc_key in one batch, so the upsert
+    # target must already be unique per loc_key.
+    return list({r["loc_key"]: r for r in rows}.values())
 
 
 def build_score_rows(df: pd.DataFrame, loc_key_to_id: dict, pipeline_run_id: int) -> list[dict]:

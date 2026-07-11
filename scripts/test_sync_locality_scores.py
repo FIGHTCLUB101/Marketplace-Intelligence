@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from db_connection import get_connection
+from shelf_common import compute_loc_key
 from sync_locality_scores import build_locality_rows, build_score_rows, sync_locality_scores
 
 requires_db = pytest.mark.skipif(
@@ -15,7 +16,7 @@ requires_db = pytest.mark.skipif(
 def _sample_df():
     return pd.DataFrame([
         {
-            "AREA": "Indiranagar, Bangalore", "ADDRESS": "Bangalore", "PINCODE": "560038",
+            "AREA": "TestLocalityXYZ, TestCityXYZ", "ADDRESS": "TestCityXYZ", "PINCODE": "560038",
             "lat_r": 12.97, "lng_r": 77.64, "belt_id": "B1", "belt_size": 4,
             "icp_score": 87.5, "icp_verdict": "GO", "gtm_action": "PUSH-NOW",
             "serviceability_state": "Confirmed", "serviceability_confidence": "High",
@@ -31,7 +32,7 @@ def _sample_df():
         {
             # unmapped locality — lat_r is NaN, must be excluded (mirrors
             # build_locality_data.py's "only geocoded localities" filter)
-            "AREA": "Nowhere, Bangalore", "ADDRESS": "Bangalore", "PINCODE": None,
+            "AREA": "NowhereXYZ, TestCityXYZ", "ADDRESS": "TestCityXYZ", "PINCODE": None,
             "lat_r": float("nan"), "lng_r": float("nan"), "belt_id": None, "belt_size": None,
             "icp_score": 10.0, "icp_verdict": "HOLD", "gtm_action": "HOLD",
             "serviceability_state": "Unknown", "serviceability_confidence": "Low",
@@ -51,9 +52,9 @@ def test_build_locality_rows_excludes_ungeocoded_and_computes_loc_key():
     rows = build_locality_rows(_sample_df())
     assert len(rows) == 1
     row = rows[0]
-    assert row["loc_key"] == "bangalore|indiranagar"
-    assert row["area"] == "Indiranagar"
-    assert row["city"] == "Bangalore"
+    assert row["loc_key"] == compute_loc_key("TestCityXYZ", "TestLocalityXYZ")
+    assert row["area"] == "TestLocalityXYZ"
+    assert row["city"] == "TestCityXYZ"
     assert row["lat"] == 12.97
     assert row["lng"] == 77.64
     assert row["belt_id"] == "B1"
@@ -62,7 +63,7 @@ def test_build_locality_rows_excludes_ungeocoded_and_computes_loc_key():
 
 def test_build_score_rows_maps_via_loc_key():
     df = _sample_df()
-    loc_key_to_id = {"bangalore|indiranagar": 42}
+    loc_key_to_id = {compute_loc_key("TestCityXYZ", "TestLocalityXYZ"): 42}
     rows = build_score_rows(df, loc_key_to_id, pipeline_run_id=7)
     assert len(rows) == 1
     row = rows[0]
@@ -70,6 +71,30 @@ def test_build_score_rows_maps_via_loc_key():
     assert row["pipeline_run_id"] == 7
     assert row["icp_score"] == 87.5
     assert row["gtm_action"] == "PUSH-NOW"
+
+
+def test_build_locality_rows_dedupes_by_loc_key_last_wins():
+    df = pd.DataFrame([
+        {
+            "AREA": "TestLocalityXYZ, TestCityXYZ", "ADDRESS": "TestCityXYZ", "PINCODE": "111111",
+            "lat_r": 1.0, "lng_r": 1.0, "belt_id": "B1", "belt_size": 1,
+        },
+        {
+            # Same city+area as above (different casing/whitespace still
+            # normalizes to the same loc_key) but different other values —
+            # simulates two near-duplicate rows in the source parquet.
+            "AREA": "  TestLocalityXYZ , TestCityXYZ", "ADDRESS": "TestCityXYZ", "PINCODE": "222222",
+            "lat_r": 2.0, "lng_r": 2.0, "belt_id": "B2", "belt_size": 2,
+        },
+    ])
+    rows = build_locality_rows(df)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["loc_key"] == compute_loc_key("TestCityXYZ", "TestLocalityXYZ")
+    # Last occurrence wins.
+    assert row["pincode"] == "222222"
+    assert row["lat"] == 2.0
+    assert row["belt_id"] == "B2"
 
 
 @requires_db
@@ -80,6 +105,8 @@ def test_sync_locality_scores_end_to_end(tmp_path):
     parquet_path = tmp_path / "master.parquet"
     _sample_df().to_parquet(parquet_path, index=False)
 
+    loc_key = compute_loc_key("TestCityXYZ", "TestLocalityXYZ")
+
     conn = get_connection()
     try:
         result = sync_locality_scores(parquet_path, conn)
@@ -87,18 +114,18 @@ def test_sync_locality_scores_end_to_end(tmp_path):
         assert result["scores_inserted"] == 1
 
         with conn.cursor() as cur:
-            cur.execute("SELECT loc_key FROM localities WHERE loc_key = %s", ("bangalore|indiranagar",))
+            cur.execute("SELECT loc_key FROM localities WHERE loc_key = %s", (loc_key,))
             assert cur.fetchone() is not None
             cur.execute(
                 "SELECT gtm_action FROM current_locality_scores cs "
                 "JOIN localities l ON l.locality_id = cs.locality_id "
-                "WHERE l.loc_key = %s", ("bangalore|indiranagar",)
+                "WHERE l.loc_key = %s", (loc_key,)
             )
             assert cur.fetchone() == ("PUSH-NOW",)
     finally:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM locality_scores WHERE locality_id IN "
-                        "(SELECT locality_id FROM localities WHERE loc_key = %s)", ("bangalore|indiranagar",))
-            cur.execute("DELETE FROM localities WHERE loc_key = %s", ("bangalore|indiranagar",))
+                        "(SELECT locality_id FROM localities WHERE loc_key = %s)", (loc_key,))
+            cur.execute("DELETE FROM localities WHERE loc_key = %s", (loc_key,))
         conn.commit()
         conn.close()
