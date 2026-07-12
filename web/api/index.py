@@ -5,13 +5,14 @@ rewrites /api/* to this file. Run locally with:
     cd web/api && uvicorn index:app --reload
 """
 import logging
+from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
 import queries
 from db import get_connection
-from models import Belt, Locality
+from models import Belt, CompetitorSummaryRow, Locality, ShelfSnapshot
 
 logger = logging.getLogger("goatlife_api")
 
@@ -41,3 +42,24 @@ def get_belts():
     finally:
         conn.close()
     return queries.compute_belts(rows)
+
+
+@app.get("/api/competitor/history", response_model=list[ShelfSnapshot])
+def get_competitor_history(
+    locality_id: Optional[int] = Query(default=None),
+    platform: Optional[str] = Query(default=None),
+):
+    conn = get_connection()
+    try:
+        return queries.fetch_competitor_history(conn, locality_id=locality_id, platform=platform)
+    finally:
+        conn.close()
+
+
+@app.get("/api/competitor/summary", response_model=list[CompetitorSummaryRow])
+def get_competitor_summary():
+    conn = get_connection()
+    try:
+        return queries.fetch_competitor_summary(conn)
+    finally:
+        conn.close()

@@ -49,3 +49,34 @@ class Belt(BaseModel):
     go_count: int
     confirmed_count: int
     members: list[str]
+
+
+class ShelfSnapshot(BaseModel):
+    shelf_snapshot_id: int
+    platform: str
+    locality_id: Optional[int] = None
+    city_raw: str
+    locality_raw: str
+    brand_searched: Optional[str] = None
+    rank: Optional[int] = None
+    product_name: Optional[str] = None
+    pack_size: Optional[str] = None
+    selling_price: Optional[float] = None
+    mrp: Optional[float] = None
+    discount_pct: Optional[float] = None
+    stock_left: Optional[str] = None
+    rating: Optional[str] = None
+    reviews: Optional[str] = None
+    sponsored: Optional[bool] = None
+    serviceable: Optional[str] = None
+    is_goat: bool
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
+class CompetitorSummaryRow(BaseModel):
+    locality_id: int
+    platform: str
+    n_competitor_brands: int
+    competitor_avg_price: Optional[float] = None
+    goat_present: bool

@@ -114,3 +114,119 @@ def test_get_localities_returns_generic_500_on_db_error(monkeypatch):
     response = client.get("/api/localities")
     assert response.status_code == 500
     assert response.json() == {"detail": "internal server error"}
+
+
+@requires_db
+def test_get_competitor_history_filters_by_locality_and_platform():
+    conn = get_connection()
+    locality_id = None
+    scrape_run_id = None
+    snapshot_id = None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO localities (loc_key, area, city) VALUES (%s, %s, %s) RETURNING locality_id",
+                ("testcityxyz|testlocalityxyz", "TestLocalityXYZ", "TestCityXYZ"),
+            )
+            locality_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) RETURNING scrape_run_id",
+                ("test_platform_xyz", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO shelf_snapshots (scrape_run_id, platform, locality_id, city_raw, locality_raw, "
+                "brand_searched, selling_price, is_goat) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                "RETURNING shelf_snapshot_id",
+                (scrape_run_id, "test_platform_xyz", locality_id, "TestCityXYZ", "TestLocalityXYZ",
+                 "Yoga Bar", 399, False),
+            )
+            snapshot_id = cur.fetchone()[0]
+        conn.commit()
+
+        response = client.get(
+            f"/api/competitor/history?locality_id={locality_id}&platform=test_platform_xyz"
+        )
+        assert response.status_code == 200
+        rows = response.json()
+        assert len(rows) == 1
+        assert rows[0]["brand_searched"] == "Yoga Bar"
+
+        empty = client.get(f"/api/competitor/history?locality_id={locality_id}&platform=zepto")
+        assert empty.json() == []
+    finally:
+        with conn.cursor() as cur:
+            if snapshot_id is not None:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (snapshot_id,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+            if locality_id is not None:
+                cur.execute("DELETE FROM localities WHERE locality_id = %s", (locality_id,))
+        conn.commit()
+        conn.close()
+
+
+@requires_db
+def test_get_competitor_summary_reflects_latest_run_only():
+    conn = get_connection()
+    locality_id = None
+    old_run_id = None
+    new_run_id = None
+    snapshot_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO localities (loc_key, area, city) VALUES (%s, %s, %s) RETURNING locality_id",
+                ("testcityxyz|testlocalityxyz", "TestLocalityXYZ", "TestCityXYZ"),
+            )
+            locality_id = cur.fetchone()[0]
+
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file, started_at) "
+                "VALUES (%s, %s, now() - interval '1 day') RETURNING scrape_run_id",
+                ("test_platform_xyz", "old.xlsx"),
+            )
+            old_run_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO shelf_snapshots (scrape_run_id, platform, locality_id, city_raw, locality_raw, "
+                "brand_searched, selling_price, is_goat) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                "RETURNING shelf_snapshot_id",
+                (old_run_id, "test_platform_xyz", locality_id, "TestCityXYZ", "TestLocalityXYZ",
+                 "Old Brand", 199, False),
+            )
+            snapshot_ids.append(cur.fetchone()[0])
+
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file, started_at) VALUES (%s, %s, now()) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz", "new.xlsx"),
+            )
+            new_run_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO shelf_snapshots (scrape_run_id, platform, locality_id, city_raw, locality_raw, "
+                "brand_searched, selling_price, is_goat) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+                "RETURNING shelf_snapshot_id",
+                (new_run_id, "test_platform_xyz", locality_id, "TestCityXYZ", "TestLocalityXYZ",
+                 "New Brand", 299, False),
+            )
+            snapshot_ids.append(cur.fetchone()[0])
+        conn.commit()
+
+        response = client.get("/api/competitor/summary")
+        assert response.status_code == 200
+        row = next(r for r in response.json() if r["locality_id"] == locality_id)
+        assert row["n_competitor_brands"] == 1
+        assert row["competitor_avg_price"] == 299.0
+        assert row["goat_present"] is False
+    finally:
+        with conn.cursor() as cur:
+            if snapshot_ids:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = ANY(%s)", (snapshot_ids,))
+            if old_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (old_run_id,))
+            if new_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (new_run_id,))
+            if locality_id is not None:
+                cur.execute("DELETE FROM localities WHERE locality_id = %s", (locality_id,))
+        conn.commit()
+        conn.close()

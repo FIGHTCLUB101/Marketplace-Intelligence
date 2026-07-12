@@ -2,6 +2,56 @@
 open psycopg2 connection and returns plain dicts (via RealDictCursor)."""
 from psycopg2.extras import RealDictCursor
 
+COMPETITOR_HISTORY_SQL = """
+    SELECT
+        s.shelf_snapshot_id, s.platform, s.locality_id, s.city_raw, s.locality_raw,
+        s.brand_searched, s.rank, s.product_name, s.pack_size, s.selling_price,
+        s.mrp, s.discount_pct, s.stock_left, s.rating, s.reviews, s.sponsored,
+        s.serviceable, s.is_goat, r.started_at, r.finished_at
+    FROM shelf_snapshots s
+    JOIN scrape_runs r ON r.scrape_run_id = s.scrape_run_id
+    WHERE (%(locality_id)s IS NULL OR s.locality_id = %(locality_id)s)
+      AND (%(platform)s IS NULL OR s.platform = %(platform)s)
+    ORDER BY r.started_at ASC
+"""
+
+
+def fetch_competitor_history(conn, locality_id=None, platform=None):
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(COMPETITOR_HISTORY_SQL, {"locality_id": locality_id, "platform": platform})
+        return cur.fetchall()
+
+
+COMPETITOR_SUMMARY_SQL = """
+    WITH latest_runs AS (
+        SELECT DISTINCT ON (platform) platform, scrape_run_id
+        FROM scrape_runs
+        ORDER BY platform, started_at DESC
+    ),
+    latest_snapshots AS (
+        SELECT s.*
+        FROM shelf_snapshots s
+        JOIN latest_runs lr
+          ON lr.platform = s.platform AND lr.scrape_run_id = s.scrape_run_id
+    )
+    SELECT
+        locality_id, platform,
+        COUNT(DISTINCT brand_searched) FILTER (WHERE NOT is_goat) AS n_competitor_brands,
+        ROUND(AVG(selling_price) FILTER (WHERE NOT is_goat)::numeric, 1) AS competitor_avg_price,
+        BOOL_OR(is_goat) AS goat_present
+    FROM latest_snapshots
+    WHERE locality_id IS NOT NULL
+    GROUP BY locality_id, platform
+    ORDER BY locality_id, platform
+"""
+
+
+def fetch_competitor_summary(conn):
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(COMPETITOR_SUMMARY_SQL)
+        return cur.fetchall()
+
+
 LOCALITIES_SQL = """
     SELECT
         l.locality_id, l.loc_key, l.area, l.city, l.pincode, l.lat, l.lng,
