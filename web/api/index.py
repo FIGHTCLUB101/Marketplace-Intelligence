@@ -7,12 +7,13 @@ rewrites /api/* to this file. Run locally with:
 import logging
 from typing import Optional
 
-from fastapi import FastAPI, Query
+import psycopg2.errors
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 import queries
 from db import get_connection
-from models import Belt, CompetitorSummaryRow, Locality, ShelfSnapshot
+from models import Annotation, AnnotationCreate, Belt, CompetitorSummaryRow, Locality, ShelfSnapshot
 
 logger = logging.getLogger("goatlife_api")
 
@@ -61,5 +62,29 @@ def get_competitor_summary():
     conn = get_connection()
     try:
         return queries.fetch_competitor_summary(conn)
+    finally:
+        conn.close()
+
+
+@app.get("/api/annotations", response_model=list[Annotation])
+def get_annotations(locality_id: Optional[int] = Query(default=None)):
+    conn = get_connection()
+    try:
+        return queries.fetch_annotations(conn, locality_id=locality_id)
+    finally:
+        conn.close()
+
+
+@app.post("/api/annotations", response_model=Annotation, status_code=201)
+def create_annotation(body: AnnotationCreate):
+    conn = get_connection()
+    try:
+        try:
+            return queries.insert_annotation(
+                conn, body.locality_id, body.note, body.status, body.budget_note
+            )
+        except psycopg2.errors.ForeignKeyViolation:
+            conn.rollback()
+            raise HTTPException(status_code=404, detail="locality not found")
     finally:
         conn.close()

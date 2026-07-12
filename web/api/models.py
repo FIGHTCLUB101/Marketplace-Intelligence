@@ -80,3 +80,20 @@ class CompetitorSummaryRow(BaseModel):
     n_competitor_brands: int
     competitor_avg_price: Optional[float] = None
     goat_present: bool
+
+
+class Annotation(BaseModel):
+    annotation_id: int
+    locality_id: int
+    note: Optional[str] = None
+    status: Optional[str] = None
+    budget_note: Optional[float] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AnnotationCreate(BaseModel):
+    locality_id: int
+    note: Optional[str] = None
+    status: Optional[str] = None
+    budget_note: Optional[float] = None

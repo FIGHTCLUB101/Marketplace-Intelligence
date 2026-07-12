@@ -99,3 +99,34 @@ def compute_belts(locality_rows):
         })
     belts.sort(key=lambda b: b["size"], reverse=True)
     return belts
+
+
+ANNOTATIONS_SELECT_SQL = """
+    SELECT annotation_id, locality_id, note, status, budget_note, created_at, updated_at
+    FROM locality_annotations
+    WHERE (%(locality_id)s IS NULL OR locality_id = %(locality_id)s)
+    ORDER BY created_at DESC
+"""
+
+
+def fetch_annotations(conn, locality_id=None):
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(ANNOTATIONS_SELECT_SQL, {"locality_id": locality_id})
+        return cur.fetchall()
+
+
+ANNOTATION_INSERT_SQL = """
+    INSERT INTO locality_annotations (locality_id, note, status, budget_note)
+    VALUES (%(locality_id)s, %(note)s, %(status)s, %(budget_note)s)
+    RETURNING annotation_id, locality_id, note, status, budget_note, created_at, updated_at
+"""
+
+
+def insert_annotation(conn, locality_id, note, status, budget_note):
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(ANNOTATION_INSERT_SQL, {
+            "locality_id": locality_id, "note": note, "status": status, "budget_note": budget_note,
+        })
+        row = cur.fetchone()
+        conn.commit()
+        return row

@@ -230,3 +230,48 @@ def test_get_competitor_summary_reflects_latest_run_only():
                 cur.execute("DELETE FROM localities WHERE locality_id = %s", (locality_id,))
         conn.commit()
         conn.close()
+
+
+@requires_db
+def test_post_annotation_creates_row_and_get_lists_it():
+    conn = get_connection()
+    locality_id = None
+    annotation_id = None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO localities (loc_key, area, city) VALUES (%s, %s, %s) RETURNING locality_id",
+                ("testcityxyz|testlocalityxyz", "TestLocalityXYZ", "TestCityXYZ"),
+            )
+            locality_id = cur.fetchone()[0]
+        conn.commit()
+
+        response = client.post("/api/annotations", json={
+            "locality_id": locality_id, "note": "Launched pop-up", "status": "launched",
+            "budget_note": 15000,
+        })
+        assert response.status_code == 201
+        body = response.json()
+        annotation_id = body["annotation_id"]
+        assert body["note"] == "Launched pop-up"
+        assert body["status"] == "launched"
+
+        list_response = client.get(f"/api/annotations?locality_id={locality_id}")
+        assert list_response.status_code == 200
+        notes = [a["note"] for a in list_response.json()]
+        assert "Launched pop-up" in notes
+    finally:
+        with conn.cursor() as cur:
+            if annotation_id is not None:
+                cur.execute("DELETE FROM locality_annotations WHERE annotation_id = %s", (annotation_id,))
+            if locality_id is not None:
+                cur.execute("DELETE FROM localities WHERE locality_id = %s", (locality_id,))
+        conn.commit()
+        conn.close()
+
+
+@requires_db
+def test_post_annotation_returns_404_for_unknown_locality():
+    response = client.post("/api/annotations", json={"locality_id": 999999999, "note": "x"})
+    assert response.status_code == 404
+    assert response.json() == {"detail": "locality not found"}
