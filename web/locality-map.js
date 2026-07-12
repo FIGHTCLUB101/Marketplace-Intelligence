@@ -105,9 +105,25 @@ export function showProfile(p) {
   const row = (k, v, mono) => `<div class="pr"><span class="k">${k}</span><span class="v${mono ? ' mono' : ''}">${v}</span></div>`;
   const gem = (on, t, bg, fg) => on ? `<span class="pill" style="background:${bg};color:${fg}">${t}</span>` : '';
   const brands = (p.n_brands_confirmed || 0) + '/3' + (p.brands_confirmed_list ? ' · ' + p.brands_confirmed_list : '');
+
+  const num = (v) => (v !== '' && v != null) ? +v : null;
+  const blComp = num(p.blinkit_n_competitor_brands);
+  const blAvg  = num(p.blinkit_competitor_avg_price);
+  const blAdv  = num(p.price_advantage_blinkit);
+  const ztComp = num(p.zepto_n_competitor_brands);
+  const compSection = blComp !== null ? `
+    <div class="p-sep"></div>
+    <div class="p-section-head">Competitive position · Oats aisle</div>
+    <div class="p-grid">
+      ${row('GOAT on Blinkit', truthy(p.blinkit_goat_present) ? '<span style="color:#059669">Listed ✓</span>' : '<span style="color:#888780">Not yet</span>')}
+      ${blAvg !== null ? row('Competitor avg price', '₹' + Math.round(blAvg), true) : ''}
+      ${blAdv !== null ? row('GOAT price advantage', '<span style="color:#059669">+₹' + Math.round(blAdv) + ' cheaper</span>') : ''}
+      ${truthy(p.is_white_space) ? '<div class="pr"><span class="pill" style="background:#E6F4EE;color:#059669;font-size:11px">White space — no competitors on BL or Zepto</span></div>' : ''}
+    </div>` : '';
+
   panel.innerHTML = `
     <div class="p-head">
-      <div><div class="p-area">${p.AREA}</div><div class="p-sub">${p.ADDRESS} · PIN ${p.PINCODE || '—'}</div></div>
+      <div><div class="p-area">${p.AREA.split(',')[0].trim()}</div><div class="p-sub">${p.ADDRESS} · PIN ${p.PINCODE || '—'}</div></div>
       <button class="p-x" onclick="document.getElementById('profile').classList.remove('open')">×</button>
     </div>
     <div class="gtm-status" style="color:${c}">● ${labelFor(p.gtm_action)}</div>
@@ -125,6 +141,7 @@ export function showProfile(p) {
       ${row('Employer quality', p.employer_quality != null && p.employer_quality !== '' ? Math.round(+p.employer_quality) : '—', true)}
       ${row('Metro', truthy(p.is_metro_connected) ? 'Yes' : 'No')}
     </div>
+    ${compSection}
     <div class="pills">
       ${gem(truthy(p.pareto_optimal), 'Pareto-optimal', '#E6F1FB', '#185FA5')}
       ${gem(truthy(p.hidden_gem_v2), 'Hidden gem', '#FAEEDA', '#854F0B')}

@@ -3,7 +3,6 @@ import { colorFor, labelFor, GTM_ACTIONS } from './contract.js';
 import { renderLeaderboard, renderGems, renderMethodology } from './views.js';
 import { renderSequence } from './sequence.js';
 import AppState from './state.js';
-import './margin.js';
 
 const L = window.LOCALITIES || [];
 const BELTS = window.BELTS || [];
@@ -71,9 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   renderKpis();
   buildLedger();
-  initMap();
-  AppState.initMargin && AppState.initMargin();
-  renderMethodology();
+  try { initMap(); } catch (e) { console.error('initMap failed', e); }
+  try { renderMethodology(); } catch (e) { console.error('renderMethodology failed', e); }
 
   document.getElementById('f-city').addEventListener('change', (e) => { sel.city = e.target.value; applyFilter(); });
   document.getElementById('f-verdict').addEventListener('change', (e) => { sel.verdict = e.target.value; applyFilter(); });

@@ -7,7 +7,6 @@ const AppState = {
   renderLeaderboard: null,
   renderWhitespace: null,
   renderGyms: null,
-  initMargin: null,
   renderMethodology: null,
 };
 export default AppState;

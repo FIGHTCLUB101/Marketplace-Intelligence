@@ -61,3 +61,6 @@ p.vd{color:var(--muted);font-size:13px;margin-bottom:18px;max-width:700px;line-h
 h3.gh{font-size:13px;font-weight:600;margin:22px 0 8px}
 :focus-visible{outline:2px solid var(--goat);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.p-sep{border-top:1px solid var(--line);margin:14px 0 10px}
+.p-section-head{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
