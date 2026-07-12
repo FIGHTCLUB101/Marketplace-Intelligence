@@ -275,3 +275,39 @@ def test_post_annotation_returns_404_for_unknown_locality():
     response = client.post("/api/annotations", json={"locality_id": 999999999, "note": "x"})
     assert response.status_code == 404
     assert response.json() == {"detail": "locality not found"}
+
+
+@requires_db
+def test_get_freshness_reflects_latest_timestamps():
+    conn = get_connection()
+    pipeline_run_id = None
+    scrape_run_id = None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO pipeline_runs (source_parquet_filename, row_count, triggered_at) "
+                "VALUES (%s, %s, now()) RETURNING pipeline_run_id",
+                ("test.parquet", 1),
+            )
+            pipeline_run_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file, started_at, finished_at) "
+                "VALUES (%s, %s, now(), now()) RETURNING scrape_run_id",
+                ("test_platform_xyz", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+        conn.commit()
+
+        response = client.get("/api/meta/freshness")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["last_pipeline_run"] is not None
+        assert "test_platform_xyz" in body["last_scrape_by_platform"]
+    finally:
+        with conn.cursor() as cur:
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+            if pipeline_run_id is not None:
+                cur.execute("DELETE FROM pipeline_runs WHERE pipeline_run_id = %s", (pipeline_run_id,))
+        conn.commit()
+        conn.close()

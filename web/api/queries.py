@@ -130,3 +130,24 @@ def insert_annotation(conn, locality_id, note, status, budget_note):
         row = cur.fetchone()
         conn.commit()
         return row
+
+
+LAST_PIPELINE_RUN_SQL = "SELECT MAX(triggered_at) AS last_pipeline_run FROM pipeline_runs"
+
+LAST_SCRAPE_PER_PLATFORM_SQL = """
+    SELECT platform, MAX(finished_at) AS last_scrape_at
+    FROM scrape_runs
+    WHERE finished_at IS NOT NULL
+    GROUP BY platform
+"""
+
+
+def fetch_freshness(conn):
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(LAST_PIPELINE_RUN_SQL)
+        last_pipeline_run = cur.fetchone()["last_pipeline_run"]
+
+        cur.execute(LAST_SCRAPE_PER_PLATFORM_SQL)
+        by_platform = {row["platform"]: row["last_scrape_at"] for row in cur.fetchall()}
+
+    return {"last_pipeline_run": last_pipeline_run, "last_scrape_by_platform": by_platform}

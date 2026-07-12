@@ -97,3 +97,8 @@ class AnnotationCreate(BaseModel):
     note: Optional[str] = None
     status: Optional[str] = None
     budget_note: Optional[float] = None
+
+
+class Freshness(BaseModel):
+    last_pipeline_run: Optional[datetime] = None
+    last_scrape_by_platform: dict[str, Optional[datetime]]

@@ -13,7 +13,9 @@ from fastapi.responses import JSONResponse
 
 import queries
 from db import get_connection
-from models import Annotation, AnnotationCreate, Belt, CompetitorSummaryRow, Locality, ShelfSnapshot
+from models import (
+    Annotation, AnnotationCreate, Belt, CompetitorSummaryRow, Freshness, Locality, ShelfSnapshot,
+)
 
 logger = logging.getLogger("goatlife_api")
 
@@ -86,5 +88,14 @@ def create_annotation(body: AnnotationCreate):
         except psycopg2.errors.ForeignKeyViolation:
             conn.rollback()
             raise HTTPException(status_code=404, detail="locality not found")
+    finally:
+        conn.close()
+
+
+@app.get("/api/meta/freshness", response_model=Freshness)
+def get_freshness():
+    conn = get_connection()
+    try:
+        return queries.fetch_freshness(conn)
     finally:
         conn.close()
