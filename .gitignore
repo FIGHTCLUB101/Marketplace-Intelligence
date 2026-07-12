@@ -5,7 +5,8 @@ __pycache__/
 node_modules/
 structured_magicbricks_localities.csv
 .ipynb_checkpoints/
-notebooks/artifacts/
+notebooks/artifacts/*
+!notebooks/artifacts/localities_master_serviceable.parquet
 
 # generated notebook exports
 notebooks/*.csv
