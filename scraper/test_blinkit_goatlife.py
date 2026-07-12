@@ -1,5 +1,3 @@
-import math
-
 from blinkit_goatlife import extract_buy_price
 
 

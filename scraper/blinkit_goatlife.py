@@ -22,7 +22,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from _reliability import (
-    IncrementalWorkbook, is_blocked, is_dead_session_error,
+    IncrementalWorkbook, is_dead_session_error,
     jittered_sleep, should_restart_driver, wait_for_manual_unblock,
 )
 
@@ -149,6 +149,8 @@ def set_location(driver, locality, city):
             return True
 
         except Exception as e:
+            if is_dead_session_error(e):
+                raise  # let the outer loop restart the driver and retry the locality
             print(f"  ❌ Attempt {attempt+1}: {str(e)[:100]}", flush=True)
             time.sleep(3)
 
@@ -199,6 +201,7 @@ def scrape_brand(driver, brand, locality, city):
                 lines = [l.strip() for l in ct.split('\n') if l.strip() and len(l.strip()) > 3]
                 name = lines[0] if lines else "Unknown"
 
+                # No keyword filtering - capturing first 15 results regardless of brand
                 pack_size = "N/A"
                 m = re.search(r'(\d+(?:\.\d+)?)\s*(kg|g\b|ml|L\b|gm)\b', ct, re.I)
                 if m: pack_size = f"{m.group(1)} {m.group(2)}"
@@ -233,6 +236,8 @@ def scrape_brand(driver, brand, locality, city):
             except: pass
 
     except Exception as e:
+        if is_dead_session_error(e):
+            raise  # let the outer loop restart the driver and retry the locality
         print(f"    ❌ Error: {str(e)[:80]}", flush=True)
     return products
 
@@ -288,7 +293,7 @@ def main():
                 i += 1
                 continue
 
-            if should_restart_driver(i, restart_every=25):
+            if retries == 0 and should_restart_driver(i, restart_every=25):
                 print(f"\n🔄 Restarting browser at locality {i+1} to keep memory healthy...", flush=True)
                 try: driver.quit()
                 except: pass
