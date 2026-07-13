@@ -102,3 +102,80 @@ class AnnotationCreate(BaseModel):
 class Freshness(BaseModel):
     last_pipeline_run: Optional[datetime] = None
     last_scrape_by_platform: dict[str, Optional[datetime]]
+
+
+class GoatDisplaced(BaseModel):
+    city: str
+    locality: str
+    rank: int
+    was: str
+    now: str
+
+
+class RankIntrusion(BaseModel):
+    city: str
+    locality: str
+    rank: int
+    intruder: str
+
+
+class ProductEvent(BaseModel):
+    """Shape shared by new_products and gone_products entries — gone_products
+    additionally carries is_goat, new_products never does."""
+    city: str
+    locality: str
+    rank: Optional[int] = None
+    product: str
+    is_goat: Optional[bool] = None
+
+
+class RankMoved(BaseModel):
+    city: str
+    locality: str
+    product: str
+    old_rank: int
+    new_rank: int
+    is_goat: bool
+
+
+class PriceChange(BaseModel):
+    city: str
+    locality: str
+    product: str
+    old_price: float
+    new_price: float
+    change: float
+
+
+class CompetitorBreadth(BaseModel):
+    competitor: str
+    locality_count: int
+
+
+class ShelfChanges(BaseModel):
+    platform: str
+    status: str
+    new_run_id: Optional[int] = None
+    old_run_id: Optional[int] = None
+    narrative: list[str]
+    brand_defence_rate: Optional[float] = None
+    conquest_breadth: list[CompetitorBreadth] = []
+    goat_displaced: list[GoatDisplaced] = []
+    rank_intrusions: list[RankIntrusion] = []
+    goat_gone: list[ProductEvent] = []
+    new_products: list[ProductEvent] = []
+    gone_products: list[ProductEvent] = []
+    rank_moved: list[RankMoved] = []
+    price_changes: list[PriceChange] = []
+
+
+class TrendSeries(BaseModel):
+    product_name: str
+    is_goat: bool
+    data: list[Optional[float]]
+
+
+class ShelfTrends(BaseModel):
+    platform: str
+    weeks: list[str]
+    series: list[TrendSeries]
