@@ -63,7 +63,7 @@ function renderTrendsTable(trends) {
   const rows = formatTrendRows(trends);
   const head = `<tr><th>Product</th>${trends.weeks.map((w) => `<th>${w}</th>`).join('')}</tr>`;
   const body = rows.map((r) =>
-    `<tr><td>${r.label}</td>${r.cells.map((c) => `<td class="mono">${c}</td>`).join('')}</tr>`
+    `<tr><td>${r.isGoat ? `<strong>${r.label}</strong>` : r.label}</td>${r.cells.map((c) => `<td class="mono">${c}</td>`).join('')}</tr>`
   ).join('');
   return `<table class="lb">${head}${body}</table>`;
 }
