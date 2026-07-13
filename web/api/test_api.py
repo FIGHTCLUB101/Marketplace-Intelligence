@@ -386,3 +386,12 @@ def test_get_shelf_changes_detects_goat_displaced_between_two_runs():
             cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = ANY(%s)", (run_ids,))
         conn.commit()
         conn.close()
+
+
+@requires_db
+def test_get_shelf_trends_returns_empty_series_for_unknown_platform():
+    response = client.get("/api/shelf/trends?platform=test_platform_xyz_no_data")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["weeks"] == []
+    assert body["series"] == []

@@ -212,3 +212,63 @@ def fetch_brand_defence_rate(conn, scrape_run_id):
     if not total_localities:
         return None
     return round(100 * goat_rank1_count / total_localities, 1)
+
+
+SHELF_RUN_LABELS_SQL = """
+    SELECT scrape_run_id, started_at FROM scrape_runs
+    WHERE platform = %(platform)s ORDER BY started_at ASC
+"""
+
+SHELF_WATCHED_COMPETITORS_SQL = """
+    SELECT product_name FROM shelf_snapshots
+    WHERE platform = %(platform)s AND NOT is_goat
+      AND product_name NOT IN ('N/A', 'Not Available', 'Location Error', 'Not Serviceable')
+    GROUP BY product_name
+    ORDER BY COUNT(*) DESC
+    LIMIT %(top_n)s
+"""
+
+SHELF_TREND_AVG_RANK_SQL = """
+    SELECT s.product_name, BOOL_OR(s.is_goat) AS is_goat, r.scrape_run_id,
+           ROUND(AVG(s.rank)::numeric, 2) AS avg_rank
+    FROM shelf_snapshots s
+    JOIN scrape_runs r ON r.scrape_run_id = s.scrape_run_id
+    WHERE s.platform = %(platform)s AND s.rank IS NOT NULL
+      AND (s.is_goat OR s.product_name = ANY(%(watched)s))
+    GROUP BY s.product_name, r.scrape_run_id
+"""
+
+
+def fetch_shelf_trends(conn, platform, top_n=3):
+    """Returns {"platform", "weeks": [iso date str, ...],
+    "series": [{"product_name", "is_goat", "data": [avg_rank|None per week]}, ...]}
+    for every GOAT product plus the top_n most-frequently-appearing competitor
+    product names (mirrors the antigravity repo's select_watched_competitors)."""
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(SHELF_RUN_LABELS_SQL, {"platform": platform})
+        runs = cur.fetchall()
+        weeks = [r["started_at"].strftime("%Y-%m-%d") for r in runs]
+        run_id_to_week = {r["scrape_run_id"]: r["started_at"].strftime("%Y-%m-%d") for r in runs}
+
+        cur.execute(SHELF_WATCHED_COMPETITORS_SQL, {"platform": platform, "top_n": top_n})
+        watched = [row["product_name"] for row in cur.fetchall()]
+
+        cur.execute(SHELF_TREND_AVG_RANK_SQL, {"platform": platform, "watched": watched})
+        points = cur.fetchall()
+
+    data_by_name = {}
+    is_goat_by_name = {}
+    for p in points:
+        name = p["product_name"]
+        is_goat_by_name[name] = p["is_goat"]
+        data_by_name.setdefault(name, {})[run_id_to_week[p["scrape_run_id"]]] = float(p["avg_rank"])
+
+    series = [
+        {
+            "product_name": name,
+            "is_goat": is_goat_by_name[name],
+            "data": [week_data.get(w) for w in weeks],
+        }
+        for name, week_data in data_by_name.items()
+    ]
+    return {"platform": platform, "weeks": weeks, "series": series}

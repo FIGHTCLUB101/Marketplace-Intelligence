@@ -5,7 +5,7 @@ import pytest
 from db import get_connection
 from queries import (
     compute_belts, fetch_brand_defence_rate, fetch_drop_calendar, fetch_latest_two_scrape_run_ids,
-    fetch_snapshot_rows,
+    fetch_shelf_trends, fetch_snapshot_rows,
 )
 
 requires_db = pytest.mark.skipif(
@@ -172,5 +172,49 @@ def test_fetch_brand_defence_rate_computes_percentage():
                 cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = ANY(%s)", (snapshot_ids,))
             if scrape_run_id is not None:
                 cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()
+
+
+@requires_db
+def test_fetch_shelf_trends_includes_goat_and_top_competitor():
+    conn = get_connection()
+    run_ids = []
+    snapshot_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file, started_at) "
+                "VALUES (%s, %s, now()) RETURNING scrape_run_id",
+                ("test_platform_xyz_trends", "week1.xlsx"),
+            )
+            run_id = cur.fetchone()[0]
+            run_ids.append(run_id)
+            for name, rank, is_goat in [
+                ("GOAT Life Mocha Marvel", 1, True),
+                ("Prustlr Discovery Protein Oats", 5, False),
+            ]:
+                cur.execute(
+                    "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                    "product_name, rank, selling_price, is_goat) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                    (run_id, "test_platform_xyz_trends", "TestCityXYZ", "TestLocalityXYZ",
+                     name, rank, 119.0, is_goat),
+                )
+                snapshot_ids.append(cur.fetchone()[0])
+        conn.commit()
+
+        result = fetch_shelf_trends(conn, "test_platform_xyz_trends", top_n=3)
+        assert len(result["weeks"]) == 1
+        names = {s["product_name"] for s in result["series"]}
+        assert "GOAT Life Mocha Marvel" in names
+        assert "Prustlr Discovery Protein Oats" in names
+        goat_series = next(s for s in result["series"] if s["product_name"] == "GOAT Life Mocha Marvel")
+        assert goat_series["is_goat"] is True
+        assert goat_series["data"] == [1.0]
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = ANY(%s)", (snapshot_ids,))
+            cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = ANY(%s)", (run_ids,))
         conn.commit()
         conn.close()

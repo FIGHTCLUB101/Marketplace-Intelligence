@@ -137,3 +137,12 @@ def get_shelf_changes(platform: str = Query(default="blinkit_goatlife")):
         "rank_moved": changes["rank_moved"],
         "price_changes": changes["price_changes"],
     }
+
+
+@app.get("/api/shelf/trends", response_model=ShelfTrends)
+def get_shelf_trends(platform: str = Query(default="blinkit_goatlife")):
+    conn = get_connection()
+    try:
+        return queries.fetch_shelf_trends(conn, platform)
+    finally:
+        conn.close()
