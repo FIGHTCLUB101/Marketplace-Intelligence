@@ -151,3 +151,63 @@ def fetch_freshness(conn):
         by_platform = {row["platform"]: row["last_scrape_at"] for row in cur.fetchall()}
 
     return {"last_pipeline_run": last_pipeline_run, "last_scrape_by_platform": by_platform}
+
+
+SHELF_LATEST_TWO_RUNS_SQL = """
+    SELECT scrape_run_id FROM scrape_runs WHERE platform = %s
+    ORDER BY started_at DESC LIMIT 2
+"""
+
+
+def fetch_latest_two_scrape_run_ids(conn, platform):
+    """Returns (newest_id, second_newest_id). second_newest_id is None if
+    only one run exists for this platform; both are None if zero exist."""
+    with conn.cursor() as cur:
+        cur.execute(SHELF_LATEST_TWO_RUNS_SQL, (platform,))
+        ids = [row[0] for row in cur.fetchall()]
+    if not ids:
+        return None, None
+    if len(ids) == 1:
+        return ids[0], None
+    return ids[0], ids[1]
+
+
+SHELF_SNAPSHOT_ROWS_SQL = """
+    SELECT city_raw, locality_raw, product_name, rank, selling_price, is_goat
+    FROM shelf_snapshots WHERE scrape_run_id = %s
+"""
+
+
+def fetch_snapshot_rows(conn, scrape_run_id):
+    """Returns list of dicts in the shape shelf_changes.py's pure functions expect."""
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(SHELF_SNAPSHOT_ROWS_SQL, (scrape_run_id,))
+        return cur.fetchall()
+
+
+def fetch_drop_calendar(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT sku_name FROM sku_drop_calendar")
+        return {row[0] for row in cur.fetchall()}
+
+
+BRAND_DEFENCE_RATE_SQL = """
+    SELECT
+        COUNT(*) FILTER (WHERE is_goat AND rank = 1) AS goat_rank1_count,
+        COUNT(DISTINCT (city_raw, locality_raw)) AS total_localities
+    FROM shelf_snapshots
+    WHERE scrape_run_id = %s AND rank IS NOT NULL
+"""
+
+
+def fetch_brand_defence_rate(conn, scrape_run_id):
+    """Returns the % (0-100, 1 decimal) of localities in this scrape_run
+    where a GOAT Life product holds rank 1. None if the run has zero
+    numeric-rank rows (shouldn't happen for a real scrape, but avoids a
+    divide-by-zero on a pathological/empty run)."""
+    with conn.cursor() as cur:
+        cur.execute(BRAND_DEFENCE_RATE_SQL, (scrape_run_id,))
+        goat_rank1_count, total_localities = cur.fetchone()
+    if not total_localities:
+        return None
+    return round(100 * goat_rank1_count / total_localities, 1)
