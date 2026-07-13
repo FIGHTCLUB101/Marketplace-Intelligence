@@ -1,6 +1,7 @@
 :root{
   --paper:#FAFAF7; --surface:#FFFFFF; --ink:#1A1A1A; --muted:#6B6B66; --line:#E6E4DD; --goat:#E8A317;
   --sans:'IBM Plex Sans',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --radius:8px; --go:#059669;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--sans);background:var(--paper);color:var(--ink);height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -64,3 +65,12 @@ h3.gh{font-size:13px;font-weight:600;margin:22px 0 8px}
 
 .p-sep{border-top:1px solid var(--line);margin:14px 0 10px}
 .p-section-head{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+
+.info{color:var(--muted);font-size:12px;line-height:1.5}
+.stat-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.stat-val{font-family:var(--mono);font-size:20px;font-weight:600;line-height:1;margin-top:2px}
+.verdict-badge{font-family:var(--mono);font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:.04em;display:inline-block}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.field input{font-family:var(--sans);font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;outline:none}
+.field input:focus{border-color:var(--goat)}
