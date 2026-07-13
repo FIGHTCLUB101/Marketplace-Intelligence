@@ -8,12 +8,12 @@ import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from shelf_changes import generate_narrative_summary
+from shelf_changes import generate_narrative_summary, goat_gone_unique
 
 
 def build_email_html(changes, new_run_label, old_run_label):
-    goat_gone_count = len([g for g in changes["gone_products"] if g["is_goat"]])
-    total_displaced = len(changes["goat_displaced"]) + goat_gone_count
+    unique_gone = goat_gone_unique(changes)
+    total_displaced = len(changes["goat_displaced"]) + len(unique_gone)
     total_intrusions = len(changes["rank_intrusions"])
 
     severity = "ALL CLEAR" if total_displaced == 0 and total_intrusions == 0 else \
@@ -51,6 +51,13 @@ def build_email_html(changes, new_run_label, old_run_label):
         for item in changes["goat_displaced"]:
             html += (f'<div class="alert-item"><strong>{item["was"][:40]}</strong> displaced in '
                       f'{item["city"]} ({item["locality"]}) — {item["now"]}</div>')
+        html += "</div>"
+
+    if unique_gone:
+        html += '<div class="section"><h2>GOAT Life Products No Longer Listed</h2>'
+        for item in unique_gone:
+            html += (f'<div class="alert-item"><strong>{item["product"][:40]}</strong> no longer listed in '
+                      f'{item["city"]} ({item["locality"]}) — last seen rank {item["rank"]}</div>')
         html += "</div>"
 
     if changes["rank_intrusions"]:

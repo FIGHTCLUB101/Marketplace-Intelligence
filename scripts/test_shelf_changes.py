@@ -2,6 +2,7 @@ from shelf_changes import (
     build_shelf_snapshot,
     detect_changes,
     generate_narrative_summary,
+    goat_gone_unique,
     not_serviceable_localities,
 )
 
@@ -114,3 +115,50 @@ def test_generate_narrative_summary_leads_with_most_frequent_threat():
     result = generate_narrative_summary(changes)
     assert "Prustlr" in result[0]
     assert "1 other change" in result[1]
+
+
+def test_goat_gone_unique_excludes_skus_already_in_goat_displaced():
+    changes = {
+        "goat_displaced": [{"city": "Mumbai", "locality": "Bandra", "rank": 1,
+                             "was": "GOAT Life Mocha Marvel", "now": "MISSING"}],
+        "gone_products": [{"city": "Mumbai", "locality": "Bandra", "rank": 1,
+                            "product": "GOAT Life Mocha Marvel", "is_goat": True}],
+    }
+    assert goat_gone_unique(changes) == []
+
+
+def test_goat_gone_unique_includes_rank_5_plus_goat_sku_that_vanished():
+    changes = {
+        "goat_displaced": [],
+        "gone_products": [{"city": "Mumbai", "locality": "Bandra", "rank": 6,
+                            "product": "GOAT Life Choco Hazelnut", "is_goat": True}],
+    }
+    result = goat_gone_unique(changes)
+    assert len(result) == 1
+    assert result[0]["product"] == "GOAT Life Choco Hazelnut"
+
+
+def test_narrative_does_not_double_count_rank_1_4_goat_sku_that_vanished():
+    # A GOAT SKU displaced from rank 1-4 AND gone is ONE event, not two.
+    changes = {
+        "goat_displaced": [{"city": "Mumbai", "locality": "Bandra", "rank": 1,
+                             "was": "GOAT Life Mocha Marvel", "now": "MISSING"}],
+        "rank_intrusions": [],
+        "gone_products": [{"city": "Mumbai", "locality": "Bandra", "rank": 1,
+                            "product": "GOAT Life Mocha Marvel", "is_goat": True}],
+    }
+    result = generate_narrative_summary(changes)
+    assert len(result) == 1  # lead sentence only, no "N other changes"
+    assert "Mocha Marvel" in result[0]
+
+
+def test_narrative_gives_lead_sentence_to_rank_5_plus_goat_sku_that_vanished():
+    changes = {
+        "goat_displaced": [],
+        "rank_intrusions": [],
+        "gone_products": [{"city": "Mumbai", "locality": "Bandra", "rank": 6,
+                            "product": "GOAT Life Choco Hazelnut", "is_goat": True}],
+    }
+    result = generate_narrative_summary(changes)
+    assert "Choco Hazelnut" in result[0]
+    assert "disappeared" in result[0]

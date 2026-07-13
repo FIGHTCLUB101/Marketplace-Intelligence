@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from alerts import build_email_html, send_gmail
 from db_connection import get_connection
 from queries_shelf import fetch_drop_calendar, fetch_latest_two_scrape_run_ids, fetch_snapshot_rows
-from shelf_changes import detect_changes
+from shelf_changes import detect_changes, goat_gone_unique
 from sync_shelf_snapshots import sync_shelf_snapshots
 
 load_dotenv()
@@ -59,7 +59,7 @@ def main():
         logging.info(f"  Rank intrusions  : {len(changes['rank_intrusions'])}")
         logging.info(f"  Price changes    : {len(changes['price_changes'])}")
 
-        total = len(changes["goat_displaced"]) + len(changes["rank_intrusions"])
+        total = len(changes["goat_displaced"]) + len(changes["rank_intrusions"]) + len(goat_gone_unique(changes))
         subject = (f"GOAT Life Shelf Alert — {total} changes detected" if total > 0
                    else "GOAT Life Shelf Monitor — All Clear")
 

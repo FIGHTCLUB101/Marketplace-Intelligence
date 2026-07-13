@@ -33,3 +33,16 @@ def test_build_email_html_includes_price_changes_table():
     html = build_email_html(changes, "2026-07-13", "2026-07-06")
     assert "Prustlr Discovery Protein Oats" in html
     assert "469" in html
+
+
+def test_build_email_html_renders_detail_section_for_rank_5_plus_goat_gone():
+    changes = {
+        "goat_displaced": [], "goat_recovered": [], "new_products": [],
+        "gone_products": [{"city": "Mumbai", "locality": "Bandra", "rank": 6,
+                            "product": "GOAT Life Choco Hazelnut", "is_goat": True}],
+        "rank_intrusions": [], "rank_moved": [], "price_changes": [],
+    }
+    html = build_email_html(changes, "2026-07-13", "2026-07-06")
+    assert "GOAT LIFE SHELF DISRUPTED" in html
+    assert "GOAT Life Choco Hazelnut" in html
+    assert "No Longer Listed" in html

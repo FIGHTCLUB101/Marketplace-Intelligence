@@ -112,35 +112,46 @@ def detect_changes(rows_new, rows_old, drop_calendar=None, price_threshold_inr=2
     }
 
 
+def goat_gone_unique(changes):
+    """GOAT gone_products entries not already represented in goat_displaced
+    (which covers rank 1-4 SKUs that vanished — same event, don't double-count).
+    The remainder is GOAT SKUs that vanished while already ranked 5+, which
+    goat_displaced never captures at all."""
+    displaced_names = {e["was"] for e in changes["goat_displaced"]}
+    return [g for g in changes["gone_products"] if g["is_goat"] and g["product"] not in displaced_names]
+
+
 def generate_narrative_summary(changes):
     """Returns 1-2 plain-language sentences. Lead sentence is whichever
     threat's product name recurs most often this week (frequency-only —
-    ICP-weighted prioritization is Sprint 5)."""
-    goat_gone = [g for g in changes["gone_products"] if g["is_goat"]]
-    threats = list(changes["goat_displaced"]) + list(changes["rank_intrusions"])
+    ICP-weighted prioritization is Sprint 5). A "threat" is a rank
+    disruption, a competitor intrusion, or a GOAT SKU vanishing entirely
+    (goat_gone_unique avoids double-counting a rank-1-4 SKU that appears in
+    both goat_displaced and gone_products for the same real event)."""
+    threats = list(changes["goat_displaced"]) + list(changes["rank_intrusions"]) + list(goat_gone_unique(changes))
 
-    if not threats and not goat_gone:
+    if not threats:
         return ["GOAT Life holds ranks 1-4 across all monitored localities. "
                 "No competitor has moved into your shelf space this week."]
 
     def product_name_of(entry):
-        return entry.get("was") or entry.get("intruder") or ""
+        return entry.get("was") or entry.get("intruder") or entry.get("product") or ""
 
     name_counts = {}
     for e in threats:
         name_counts[product_name_of(e)] = name_counts.get(product_name_of(e), 0) + 1
 
-    sentences = []
-    lead = max(threats, key=lambda e: name_counts[product_name_of(e)]) if threats else None
-    if lead is not None:
-        product, city = product_name_of(lead), lead["city"]
-        if "intruder" in lead:
-            sentences.append(f"{product[:40]} intruded into GOAT Life's shelf space in {city} this week.")
-        else:
-            sentences.append(f"GOAT Life lost shelf position for {product[:40]} in {city} this week.")
+    lead = max(threats, key=lambda e: name_counts[product_name_of(e)])
+    product, city = product_name_of(lead), lead["city"]
+    if "intruder" in lead:
+        sentence = f"{product[:40]} intruded into GOAT Life's shelf space in {city} this week."
+    elif "was" in lead:
+        sentence = f"GOAT Life lost shelf position for {product[:40]} in {city} this week."
+    else:
+        sentence = f"GOAT Life's {product[:40]} disappeared from the shelf in {city} this week."
+    sentences = [sentence]
 
-    lead_occurrences = name_counts[product_name_of(lead)] if lead is not None else 0
-    other_count = len(threats) + len(goat_gone) - lead_occurrences
+    other_count = len(threats) - name_counts[product_name_of(lead)]
     if other_count > 0:
         sentences.append(f"{other_count} other change{'s' if other_count != 1 else ''} detected this week.")
 
