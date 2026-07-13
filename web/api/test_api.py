@@ -311,3 +311,78 @@ def test_get_freshness_reflects_latest_timestamps():
                 cur.execute("DELETE FROM pipeline_runs WHERE pipeline_run_id = %s", (pipeline_run_id,))
         conn.commit()
         conn.close()
+
+
+@requires_db
+def test_get_shelf_changes_reports_insufficient_history_with_zero_runs():
+    response = client.get("/api/shelf/changes?platform=test_platform_xyz_empty")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "insufficient_history"
+    assert body["new_run_id"] is None
+
+
+@requires_db
+def test_get_shelf_changes_detects_goat_displaced_between_two_runs():
+    conn = get_connection()
+    run_ids = []
+    snapshot_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file, started_at) "
+                "VALUES (%s, %s, now() - interval '7 days') RETURNING scrape_run_id",
+                ("test_platform_xyz_changes", "old.xlsx"),
+            )
+            old_run_id = cur.fetchone()[0]
+            run_ids.append(old_run_id)
+            cur.execute(
+                "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                "product_name, rank, selling_price, is_goat) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                (old_run_id, "test_platform_xyz_changes", "TestCityXYZ", "TestLocalityXYZ",
+                 "GOAT Life Mocha Marvel", 1, 119.0, True),
+            )
+            snapshot_ids.append(cur.fetchone()[0])
+
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file, started_at) "
+                "VALUES (%s, %s, now()) RETURNING scrape_run_id",
+                ("test_platform_xyz_changes", "new.xlsx"),
+            )
+            new_run_id = cur.fetchone()[0]
+            run_ids.append(new_run_id)
+            cur.execute(
+                "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                "product_name, rank, selling_price, is_goat) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                (new_run_id, "test_platform_xyz_changes", "TestCityXYZ", "TestLocalityXYZ",
+                 "Prustlr Discovery Protein Oats", 1, 449.0, False),
+            )
+            snapshot_ids.append(cur.fetchone()[0])
+        conn.commit()
+
+        response = client.get("/api/shelf/changes?platform=test_platform_xyz_changes")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ok"
+        assert body["old_run_id"] == old_run_id
+        assert body["new_run_id"] == new_run_id
+        assert len(body["goat_displaced"]) == 1
+        assert body["goat_displaced"][0]["was"] == "GOAT Life Mocha Marvel"
+        # Only 1 locality in the new run and GOAT holds rank 1 nowhere in it
+        # (Prustlr does) -> brand_defence_rate is 0.0, not None.
+        assert body["brand_defence_rate"] == 0.0
+        # Prustlr is a genuinely new key at this (city, locality) — it wasn't
+        # present in the old snapshot under that product name — so it also
+        # registers as a rank_intrusion into the vacated rank-1 slot, and
+        # conquest_breadth groups it.
+        assert body["conquest_breadth"] == [
+            {"competitor": "Prustlr Discovery Protein Oats", "locality_count": 1}
+        ]
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = ANY(%s)", (snapshot_ids,))
+            cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = ANY(%s)", (run_ids,))
+        conn.commit()
+        conn.close()

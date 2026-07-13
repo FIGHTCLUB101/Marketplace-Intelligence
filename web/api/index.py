@@ -12,9 +12,12 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 import queries
+import shelf_changes
 from db import get_connection
 from models import (
-    Annotation, AnnotationCreate, Belt, CompetitorSummaryRow, Freshness, Locality, ShelfSnapshot,
+    Annotation, AnnotationCreate, Belt, CompetitorBreadth, CompetitorSummaryRow, Freshness,
+    GoatDisplaced, Locality, PriceChange, ProductEvent, RankIntrusion, RankMoved, ShelfChanges,
+    ShelfSnapshot, ShelfTrends, TrendSeries,
 )
 
 logger = logging.getLogger("goatlife_api")
@@ -99,3 +102,38 @@ def get_freshness():
         return queries.fetch_freshness(conn)
     finally:
         conn.close()
+
+
+@app.get("/api/shelf/changes", response_model=ShelfChanges)
+def get_shelf_changes(platform: str = Query(default="blinkit_goatlife")):
+    conn = get_connection()
+    try:
+        newest_id, second_id = queries.fetch_latest_two_scrape_run_ids(conn, platform)
+        if second_id is None:
+            return {
+                "platform": platform, "status": "insufficient_history",
+                "narrative": ["First week of tracking — no prior week to compare against yet."],
+            }
+        rows_new = queries.fetch_snapshot_rows(conn, newest_id)
+        rows_old = queries.fetch_snapshot_rows(conn, second_id)
+        drop_calendar = queries.fetch_drop_calendar(conn)
+        brand_defence_rate = queries.fetch_brand_defence_rate(conn, newest_id)
+    finally:
+        conn.close()
+
+    changes = shelf_changes.detect_changes(rows_new, rows_old, drop_calendar=drop_calendar)
+    narrative = shelf_changes.generate_narrative_summary(changes)
+    return {
+        "platform": platform, "status": "ok",
+        "new_run_id": newest_id, "old_run_id": second_id,
+        "narrative": narrative,
+        "brand_defence_rate": brand_defence_rate,
+        "conquest_breadth": shelf_changes.conquest_breadth(changes),
+        "goat_displaced": changes["goat_displaced"],
+        "rank_intrusions": changes["rank_intrusions"],
+        "goat_gone": shelf_changes.goat_gone_unique(changes),
+        "new_products": changes["new_products"],
+        "gone_products": changes["gone_products"],
+        "rank_moved": changes["rank_moved"],
+        "price_changes": changes["price_changes"],
+    }
