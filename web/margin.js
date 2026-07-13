@@ -2,7 +2,7 @@ import AppState from './state.js';
 
 export function calcEconomics({mrp, grossMarginPercent, brandDiscountPercent=0,
   commissionRate=0.179, fulfilmentFee=50, logisticsRate=0.10, returnsRate=0.025,
-  monthlyAdBudget=250000, monthlyOrders=500}){
+  monthlyAdBudget=250000, monthlyOrders=3000}){
   const effSP = mrp * (1 - brandDiscountPercent/100);
   const cogs = mrp * (1 - grossMarginPercent/100);
   const logistics = mrp * logisticsRate;
@@ -63,7 +63,7 @@ function render(){
       ${field('Commission (%)','m-comm',17.9)}
       ${field('Fulfilment fee (₹)','m-ful',50)}
       ${field('Monthly ad budget (₹)','m-ad',250000)}
-      ${field('Monthly orders','m-ord',500)}
+      ${field('Monthly orders','m-ord',3000)}
     </div>
     <div id="m-out" style="margin-top:1.25rem;max-width:760px"></div>`;
   el.querySelectorAll('input').forEach(i=>i.addEventListener('input', update));
