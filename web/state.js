@@ -8,6 +8,7 @@ const AppState = {
   renderWhitespace: null,
   renderGyms: null,
   renderMethodology: null,
+  initMargin: null,
   initShelfMonitor: null,
 };
 export default AppState;

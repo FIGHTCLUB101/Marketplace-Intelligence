@@ -3,6 +3,7 @@ import { colorFor, labelFor, GTM_ACTIONS } from './contract.js';
 import { renderLeaderboard, renderGems, renderMethodology } from './views.js';
 import { renderSequence } from './sequence.js';
 import AppState from './state.js';
+import './margin.js';
 import './shelf-monitor.js';
 
 const L = window.LOCALITIES || [];
@@ -88,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (v === 'leaderboard' && !rendered.lb) { renderLeaderboard(); rendered.lb = 1; }
     if (v === 'gems' && !rendered.gems) { renderGems(); rendered.gems = 1; }
     if (v === 'sequence' && !rendered.seq) { renderSequence(); rendered.seq = 1; }
+    if (v === 'margin' && !rendered.margin) { AppState.initMargin(); rendered.margin = 1; }
     if (v === 'shelf' && !rendered.shelf) { AppState.initShelfMonitor(); rendered.shelf = 1; }
   }));
 
