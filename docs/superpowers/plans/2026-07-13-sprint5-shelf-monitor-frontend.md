@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python (FastAPI, psycopg2, Pydantic — no new dependencies), vanilla JS (ES modules, no bundler, no charting library — see Task 5's reasoning for why trends render as a table, not a chart, in this sprint).
 
+**Metric naming addition (folded in after fact-checked business-analysis research):** `/api/shelf/changes` gains two computed fields — `brand_defence_rate` (% of localities where GOAT Life holds rank #1, cheap to compute from data already fetched) and `conquest_breadth` (rank intrusions grouped by competitor with a per-competitor locality count, matching the "Competitor X appears in N localities" framing). Both are real, computable today with zero new scraper/schema work. Three other proposed metrics (Sponsored Intrusion Rate, Conquest Duration, Scarcity→OOS Transition Rate) are explicitly **not** in this plan — each is blocked by a named, unresolved prerequisite (no `sponsored` field on the Blinkit scrapers; fewer than 2 weeks of real scrape history; no `stock_left`-parsing logic anywhere in the codebase) that no amount of API/frontend work here can shortcut. The dashboard's trends section is relabeled "Observed Digital Shelf Position" (copy-only change, Task 6) rather than "rank trend" — the more defensible framing, since we observe the algorithm's output, not its inputs.
+
 ## Global Constraints
 
 - **Sequencing dependency, not yet resolved:** the `worktree-margin-calculator-wiring` branch (already committed, tests passing) also modifies `web/index.html`, `web/app.js`, `web/state.js`, and `web/styles.css`. This plan's Task 6 modifies the same four files. Whichever branch merges to `main` second will need a trivial manual reconciliation (two new `<button class="tab">` lines instead of one, two new `<section>` blocks, two new lazy-render `if` lines, two blocks of new CSS) — not a logical conflict, just a textual one. Recommend merging the margin branch first since it's smaller and already fully verified; this plan does not depend on it being merged, either order works.
@@ -30,17 +32,38 @@
 - Test: `web/api/test_queries.py` (modify — append)
 
 **Interfaces:**
-- Produces: `shelf_changes.detect_changes`, `shelf_changes.generate_narrative_summary`, `shelf_changes.goat_gone_unique` (byte-identical to `scripts/shelf_changes.py`); `queries.fetch_latest_two_scrape_run_ids(conn, platform)`, `queries.fetch_snapshot_rows(conn, scrape_run_id)`, `queries.fetch_drop_calendar(conn)` (byte-identical logic to `scripts/queries_shelf.py`, added to the existing `web/api/queries.py` file rather than a new file). Consumed by Task 3.
+- Produces: `shelf_changes.detect_changes`, `shelf_changes.generate_narrative_summary`, `shelf_changes.goat_gone_unique` (byte-identical to `scripts/shelf_changes.py`); `shelf_changes.conquest_breadth(changes)` (new — a deliberate, tracked divergence from the `scripts/` original, described below); `queries.fetch_latest_two_scrape_run_ids(conn, platform)`, `queries.fetch_snapshot_rows(conn, scrape_run_id)`, `queries.fetch_drop_calendar(conn)`, `queries.fetch_brand_defence_rate(conn, scrape_run_id)` (the last is new). Consumed by Task 3.
 
-- [ ] **Step 1: Copy the pure logic module verbatim**
+- [ ] **Step 1: Copy the pure logic module verbatim, then add one new function**
 
 Read `scripts/shelf_changes.py` in full (already merged to `main` via Sprint 4) and create `web/api/shelf_changes.py` with **identical content** — same docstring, same functions (`build_shelf_snapshot`, `not_serviceable_localities`, `_is_goat_lookup`, `detect_changes`, `goat_gone_unique`, `generate_narrative_summary`), same `PLACEHOLDER_NAMES` constant. This file has zero imports in the source — confirm the copy has zero imports too.
+
+Then append one new function, **not present in `scripts/shelf_changes.py`** — this is a deliberate, one-way divergence for the API layer only (note it in the module docstring so a future reader doesn't assume the two files stay byte-identical forever):
+```python
+
+
+def conquest_breadth(changes):
+    """Groups rank_intrusions by competitor name, returning
+    [{"competitor": name, "locality_count": n}, ...] sorted by locality_count
+    descending — "Competitor X appears in N localities" framing. Pure
+    post-processing of an already-computed detect_changes() result; no new
+    query needed."""
+    counts = {}
+    for e in changes["rank_intrusions"]:
+        counts[e["intruder"]] = counts.get(e["intruder"], 0) + 1
+    return sorted(
+        [{"competitor": name, "locality_count": n} for name, n in counts.items()],
+        key=lambda x: -x["locality_count"],
+    )
+```
 
 - [ ] **Step 2: Write the failing tests for the copy**
 
 Create `web/api/test_shelf_changes.py`:
 ```python
-from shelf_changes import build_shelf_snapshot, detect_changes, generate_narrative_summary, goat_gone_unique
+from shelf_changes import (
+    build_shelf_snapshot, conquest_breadth, detect_changes, generate_narrative_summary, goat_gone_unique,
+)
 
 
 def _row(city, locality, name, rank, price, is_goat=False):
@@ -76,6 +99,21 @@ def test_generate_narrative_summary_all_clear():
     changes = {"goat_displaced": [], "rank_intrusions": [], "gone_products": []}
     result = generate_narrative_summary(changes)
     assert "holds ranks 1-4" in result[0]
+
+
+def test_conquest_breadth_groups_by_competitor_sorted_desc():
+    changes = {"rank_intrusions": [
+        {"city": "Chennai", "locality": "Adyar", "rank": 3, "intruder": "The Whole Truth"},
+        {"city": "Mumbai", "locality": "Andheri", "rank": 2, "intruder": "The Whole Truth"},
+        {"city": "Bangalore", "locality": "BTM Layout", "rank": 4, "intruder": "Yoga Bar"},
+    ]}
+    result = conquest_breadth(changes)
+    assert result[0] == {"competitor": "The Whole Truth", "locality_count": 2}
+    assert result[1] == {"competitor": "Yoga Bar", "locality_count": 1}
+
+
+def test_conquest_breadth_empty_when_no_intrusions():
+    assert conquest_breadth({"rank_intrusions": []}) == []
 ```
 
 - [ ] **Step 3: Run tests to verify they fail**
@@ -86,7 +124,7 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'shelf_changes'`
 - [ ] **Step 4: Run tests to verify they pass (after Step 1's copy)**
 
 Run: `cd web/api && python -m pytest test_shelf_changes.py -v`
-Expected: PASS (4 passed)
+Expected: PASS (6 passed)
 
 - [ ] **Step 5: Add the query functions to `web/api/queries.py`**
 
@@ -129,6 +167,28 @@ def fetch_drop_calendar(conn):
     with conn.cursor() as cur:
         cur.execute("SELECT sku_name FROM sku_drop_calendar")
         return {row[0] for row in cur.fetchall()}
+
+
+BRAND_DEFENCE_RATE_SQL = """
+    SELECT
+        COUNT(*) FILTER (WHERE is_goat AND rank = 1) AS goat_rank1_count,
+        COUNT(DISTINCT (city_raw, locality_raw)) AS total_localities
+    FROM shelf_snapshots
+    WHERE scrape_run_id = %s AND rank IS NOT NULL
+"""
+
+
+def fetch_brand_defence_rate(conn, scrape_run_id):
+    """Returns the % (0-100, 1 decimal) of localities in this scrape_run
+    where a GOAT Life product holds rank 1. None if the run has zero
+    numeric-rank rows (shouldn't happen for a real scrape, but avoids a
+    divide-by-zero on a pathological/empty run)."""
+    with conn.cursor() as cur:
+        cur.execute(BRAND_DEFENCE_RATE_SQL, (scrape_run_id,))
+        goat_rank1_count, total_localities = cur.fetchone()
+    if not total_localities:
+        return None
+    return round(100 * goat_rank1_count / total_localities, 1)
 ```
 
 - [ ] **Step 6: Write the failing tests for the query functions**
@@ -140,7 +200,9 @@ import os
 import pytest
 
 from db import get_connection
-from queries import fetch_drop_calendar, fetch_latest_two_scrape_run_ids, fetch_snapshot_rows
+from queries import (
+    fetch_brand_defence_rate, fetch_drop_calendar, fetch_latest_two_scrape_run_ids, fetch_snapshot_rows,
+)
 
 requires_db = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -233,10 +295,52 @@ def test_fetch_drop_calendar_returns_paused_skus():
         conn.close()
 ```
 
+Also append, after the `test_fetch_drop_calendar_returns_paused_skus` test:
+```python
+@requires_db
+def test_fetch_brand_defence_rate_computes_percentage():
+    conn = get_connection()
+    scrape_run_id = None
+    snapshot_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            # 2 localities total, GOAT at rank 1 in one of them -> 50%
+            rows = [
+                ("TestCityXYZ", "TestLocalityA", "GOAT Life Mocha Marvel", 1, True),
+                ("TestCityXYZ", "TestLocalityB", "Prustlr Discovery Protein Oats", 1, False),
+            ]
+            for city, locality, name, rank, is_goat in rows:
+                cur.execute(
+                    "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                    "product_name, rank, selling_price, is_goat) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                    (scrape_run_id, "test_platform_xyz", city, locality, name, rank, 119.0, is_goat),
+                )
+                snapshot_ids.append(cur.fetchone()[0])
+        conn.commit()
+
+        rate = fetch_brand_defence_rate(conn, scrape_run_id)
+        assert rate == 50.0
+    finally:
+        with conn.cursor() as cur:
+            if snapshot_ids:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = ANY(%s)", (snapshot_ids,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()
+```
+
 - [ ] **Step 7: Run tests to verify they pass**
 
 Run: `cd web/api && python -m pytest test_shelf_changes.py test_queries.py -v`
-Expected: PASS (all previous `test_queries.py` tests plus the 3 new ones; the 3 new ones report PASSED if `DATABASE_URL` is set, SKIPPED otherwise)
+Expected: PASS (all previous `test_queries.py` tests plus the 4 new ones; the 4 new ones report PASSED if `DATABASE_URL` is set, SKIPPED otherwise)
 
 - [ ] **Step 8: Commit**
 
@@ -253,7 +357,7 @@ git commit -m "feat: duplicate shelf_changes.py into web/api, add its Postgres a
 - Modify: `web/api/models.py`
 
 **Interfaces:**
-- Produces: `models.GoatDisplaced`, `models.RankIntrusion`, `models.ProductEvent`, `models.RankMoved`, `models.PriceChange`, `models.ShelfChanges`, `models.TrendSeries`, `models.ShelfTrends`. Consumed by Task 3 and Task 4.
+- Produces: `models.GoatDisplaced`, `models.RankIntrusion`, `models.ProductEvent`, `models.RankMoved`, `models.PriceChange`, `models.CompetitorBreadth`, `models.ShelfChanges`, `models.TrendSeries`, `models.ShelfTrends`. Consumed by Task 3 and Task 4.
 
 - [ ] **Step 1: Append the models**
 
@@ -304,12 +408,19 @@ class PriceChange(BaseModel):
     change: float
 
 
+class CompetitorBreadth(BaseModel):
+    competitor: str
+    locality_count: int
+
+
 class ShelfChanges(BaseModel):
     platform: str
     status: str
     new_run_id: Optional[int] = None
     old_run_id: Optional[int] = None
     narrative: list[str]
+    brand_defence_rate: Optional[float] = None
+    conquest_breadth: list[CompetitorBreadth] = []
     goat_displaced: list[GoatDisplaced] = []
     rank_intrusions: list[RankIntrusion] = []
     goat_gone: list[ProductEvent] = []
@@ -416,6 +527,16 @@ def test_get_shelf_changes_detects_goat_displaced_between_two_runs():
         assert body["new_run_id"] == new_run_id
         assert len(body["goat_displaced"]) == 1
         assert body["goat_displaced"][0]["was"] == "GOAT Life Mocha Marvel"
+        # Only 1 locality in the new run and GOAT holds rank 1 nowhere in it
+        # (Prustlr does) -> brand_defence_rate is 0.0, not None.
+        assert body["brand_defence_rate"] == 0.0
+        # Prustlr is a genuinely new key at this (city, locality) — it wasn't
+        # present in the old snapshot under that product name — so it also
+        # registers as a rank_intrusion into the vacated rank-1 slot, and
+        # conquest_breadth groups it.
+        assert body["conquest_breadth"] == [
+            {"competitor": "Prustlr Discovery Protein Oats", "locality_count": 1}
+        ]
     finally:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = ANY(%s)", (snapshot_ids,))
@@ -435,9 +556,9 @@ Add to `web/api/index.py`, after the existing `get_freshness` route. First, exte
 ```python
 import shelf_changes
 from models import (
-    Annotation, AnnotationCreate, Belt, CompetitorSummaryRow, Freshness, GoatDisplaced,
-    Locality, PriceChange, ProductEvent, RankIntrusion, RankMoved, ShelfChanges, ShelfTrends,
-    TrendSeries,
+    Annotation, AnnotationCreate, Belt, CompetitorBreadth, CompetitorSummaryRow, Freshness,
+    GoatDisplaced, Locality, PriceChange, ProductEvent, RankIntrusion, RankMoved, ShelfChanges,
+    ShelfTrends, TrendSeries,
 )
 ```
 (`GoatDisplaced`, `PriceChange`, `ProductEvent`, `RankIntrusion`, `RankMoved`, `TrendSeries` are imported here for completeness even though only `ShelfChanges`/`ShelfTrends` are referenced directly as `response_model=` values — FastAPI resolves the nested list types from `ShelfChanges`'/`ShelfTrends`' own field annotations, so the sub-models don't need separate route-level references, but importing them keeps `models.py`'s public surface visible from `index.py` the same way `Locality`/`Belt` already are.)
@@ -457,6 +578,7 @@ def get_shelf_changes(platform: str = Query(default="blinkit_goatlife")):
         rows_new = queries.fetch_snapshot_rows(conn, newest_id)
         rows_old = queries.fetch_snapshot_rows(conn, second_id)
         drop_calendar = queries.fetch_drop_calendar(conn)
+        brand_defence_rate = queries.fetch_brand_defence_rate(conn, newest_id)
     finally:
         conn.close()
 
@@ -466,6 +588,8 @@ def get_shelf_changes(platform: str = Query(default="blinkit_goatlife")):
         "platform": platform, "status": "ok",
         "new_run_id": newest_id, "old_run_id": second_id,
         "narrative": narrative,
+        "brand_defence_rate": brand_defence_rate,
+        "conquest_breadth": shelf_changes.conquest_breadth(changes),
         "goat_displaced": changes["goat_displaced"],
         "rank_intrusions": changes["rank_intrusions"],
         "goat_gone": shelf_changes.goat_gone_unique(changes),
@@ -683,7 +807,7 @@ git commit -m "feat: add GET /api/shelf/trends endpoint"
 - Create: `web/tests/shelf-monitor.test.js`
 
 **Interfaces:**
-- Produces: `severityFor(changes) -> 'critical'|'warning'|'clear'`, `formatTrendRows(trends) -> [{label, isGoat, cells}]` (both pure, tested), `AppState.initShelfMonitor` (a render function, assigned as a side effect on module load — mirrors `margin.js`'s exact `AppState.initMargin = render` pattern). Consumed by Task 6.
+- Produces: `severityFor(changes) -> 'critical'|'warning'|'clear'`, `formatTrendRows(trends) -> [{label, isGoat, cells}]`, `formatBrandDefenceRate(value) -> string` (all three pure, tested), `AppState.initShelfMonitor` (a render function, assigned as a side effect on module load — mirrors `margin.js`'s exact `AppState.initMargin = render` pattern). Consumed by Task 6.
 
 **Why trends render as a table, not a chart, in this sprint:** there is currently exactly one scrape_run for the `blinkit_goatlife` platform in production (confirmed live during Sprint 4 planning) — a line chart with one data point communicates nothing a table doesn't, and this repo has zero charting dependency today (`MapLibre` is the only external UI library, loaded via CDN for the map specifically). Introducing a charting library now, before there's more than one week of real history to plot, is speculative. A plain HTML table (using the same `.lb` table class the Leaderboard tab already defines in `styles.css`) shows the same information today and remains genuinely useful once more weeks accumulate — revisit a real chart in a later sprint once that's true.
 
@@ -693,7 +817,7 @@ Create `web/tests/shelf-monitor.test.js`:
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { formatTrendRows, severityFor } from '../shelf-monitor.js';
+import { formatBrandDefenceRate, formatTrendRows, severityFor } from '../shelf-monitor.js';
 
 test('severityFor: critical when goat_displaced or goat_gone non-empty', () => {
   assert.equal(severityFor({ goat_displaced: [{}], goat_gone: [], rank_intrusions: [] }), 'critical');
@@ -719,6 +843,12 @@ test('formatTrendRows maps weeks to cells, using — for missing data points', (
   const rows = formatTrendRows(trends);
   assert.deepEqual(rows[0], { label: 'GOAT Life Mocha Marvel', isGoat: true, cells: [1.0, '—'] });
   assert.deepEqual(rows[1], { label: 'Prustlr Discovery Protein Oats', isGoat: false, cells: ['—', 5.0] });
+});
+
+test('formatBrandDefenceRate: formats a number, handles null', () => {
+  assert.equal(formatBrandDefenceRate(75.0), '75.0%');
+  assert.equal(formatBrandDefenceRate(0), '0.0%');
+  assert.equal(formatBrandDefenceRate(null), 'N/A');
 });
 ```
 
@@ -747,6 +877,10 @@ export function formatTrendRows(trends) {
     isGoat: s.is_goat,
     cells: trends.weeks.map((_, i) => (s.data[i] === null || s.data[i] === undefined ? '—' : s.data[i])),
   }));
+}
+
+export function formatBrandDefenceRate(value) {
+  return value === null || value === undefined ? 'N/A' : `${value.toFixed(1)}%`;
 }
 
 async function fetchJson(url) {
@@ -779,6 +913,14 @@ function renderChangeRows(changes) {
   return rows.length ? rows.join('') : '<p class="info">No changes detected this week.</p>';
 }
 
+function renderConquestBreadth(breadth) {
+  if (!breadth.length) return '';
+  const rows = breadth.map((b) =>
+    `<div class="alert-row warning"><strong>${b.competitor}</strong> appears in ${b.locality_count} localit${b.locality_count === 1 ? 'y' : 'ies'}</div>`
+  ).join('');
+  return `<h3 class="gh">Conquest Breadth</h3>${rows}`;
+}
+
 function renderTrendsTable(trends) {
   if (!trends.series.length) return '<p class="info">Not enough history yet for a trend table.</p>';
   const rows = formatTrendRows(trends);
@@ -806,9 +948,13 @@ async function render() {
       <h2 class="vt">Shelf Monitor</h2>
       <p class="vd">Week-over-week changes to GOAT Life's Blinkit brand-search shelf, comparing run ${changes.old_run_id} → ${changes.new_run_id}.</p>
       <div class="severity-banner ${sev}">${SEVERITY_LABEL[sev]}</div>
+      <div class="stat-label">Brand Defence Rate</div>
+      <div class="stat-val">${formatBrandDefenceRate(changes.brand_defence_rate)}</div>
       <div class="narrative">${changes.narrative.join('<br>')}</div>
       ${renderChangeRows(changes)}
-      <h3 class="gh">Rank trend</h3>
+      ${renderConquestBreadth(changes.conquest_breadth)}
+      <h3 class="gh">Observed Digital Shelf Position</h3>
+      <p class="info">We observe the output of Blinkit's ranking algorithm, not its inputs — this is rank as it actually appeared, tracked week over week.</p>
       ${renderTrendsTable(trends)}`;
   } catch (e) {
     console.error('shelf-monitor render failed', e);
@@ -822,7 +968,7 @@ AppState.initShelfMonitor = render;
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `node --test web/tests/shelf-monitor.test.js`
-Expected: PASS (4 passed)
+Expected: PASS (5 passed)
 
 - [ ] **Step 5: Run the full JS suite once**
 
@@ -913,7 +1059,16 @@ In `web/state.js`, add `initShelfMonitor: null,` to the object (matching the exi
 
 - [ ] **Step 4: Add the CSS**
 
-Append to `web/styles.css`:
+First, run `grep -n "stat-label\|stat-val\|--radius" web/styles.css`. Two outcomes:
+- **If the margin-calculator branch already merged**, `.stat-label`, `.stat-val`, and `--radius` already exist (added by that branch) — do not redefine them, skip straight to appending only the block below.
+- **If it hasn't merged yet**, none of those three exist yet — append this additional block first (verbatim identical to what the margin branch itself adds, so whichever branch merges second produces no duplicate rule):
+```css
+.stat-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.stat-val{font-family:var(--mono);font-size:20px;font-weight:600;line-height:1;margin-top:2px}
+```
+and add `--radius:8px;` to the existing `:root{}` block's variable list.
+
+Then, always append (regardless of the above) to `web/styles.css`:
 ```css
 
 .narrative{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin:14px 0;font-size:14px;line-height:1.6}
@@ -926,7 +1081,6 @@ Append to `web/styles.css`:
 .alert-row.warning{border-left-color:#d97706}
 .alert-row.info{border-left-color:var(--goat)}
 ```
-(`--radius`, `--go` were added by the margin branch — if that branch hasn't merged yet, `--radius` won't exist yet either; the rule above only uses `--radius`, which is safe to add here too if missing. Before adding, grep the current `styles.css` for `--radius:` — if it's already defined (margin branch merged first), do not redefine it a second time inside `:root{}`; if it's genuinely absent, add `--radius:8px;` to the existing `:root{}` block the same way the margin branch's plan did.)
 
 - [ ] **Step 5: Verify in a real browser**
 
@@ -948,7 +1102,7 @@ git commit -m "feat: wire Shelf Monitor tab into the dashboard nav"
 
 ## Self-Review Notes
 
-**Spec coverage:** Both endpoints from the user's stated Sprint 5 scope (`/api/shelf/changes`, `/api/shelf/trends`) are covered (Tasks 3-4), plus the dashboard tab that surfaces them (Tasks 5-6). Task 1-2 are the necessary plumbing (duplicated pure logic + DB access + response models) neither of which was explicitly named but both of which the two endpoints depend on. Margin-calculator wiring and Blinkit sponsored-ad detection are explicitly out of scope for this plan (separate branches/sprints per the user's own sequencing).
+**Spec coverage:** Both endpoints from the user's stated Sprint 5 scope (`/api/shelf/changes`, `/api/shelf/trends`) are covered (Tasks 3-4), plus the dashboard tab that surfaces them (Tasks 5-6). Task 1-2 are the necessary plumbing (duplicated pure logic + DB access + response models) neither of which was explicitly named but both of which the two endpoints depend on. The two metric additions folded in after the fact-checked business-analysis research (Brand Defence Rate, Conquest Breadth) are covered across Tasks 1-3 (query/pure-function + model + endpoint wiring) and Task 5 (frontend rendering); Observed Digital Shelf Position is a copy-only rename in Task 5, no new logic. The three metrics explicitly NOT built (Sponsored Intrusion Rate, Conquest Duration, Scarcity→OOS Transition Rate) are named in this doc's header with their specific blockers, not silently dropped. Margin-calculator wiring and Blinkit sponsored-ad detection are explicitly out of scope for this plan (separate branches/sprints per the user's own sequencing).
 
 **Placeholder scan:** No TBD/TODO. Every step has complete, runnable code. Task 6, Step 5 explicitly documents what its manual verification does and does NOT prove, rather than claiming full end-to-end verification it cannot actually perform without a running API server.
 
