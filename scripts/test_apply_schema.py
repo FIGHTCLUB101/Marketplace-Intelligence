@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "scrape_runs",
     "shelf_snapshots",
     "locality_annotations",
+    "sku_drop_calendar",
 }
 
 

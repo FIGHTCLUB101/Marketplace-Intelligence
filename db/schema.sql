@@ -101,3 +101,14 @@ CREATE TABLE IF NOT EXISTS locality_annotations (
     updated_at                   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_locality_annotations_locality_id ON locality_annotations(locality_id);
+
+-- Sprint 4: replaces the antigravity repo's drop_calendar.json file. A SKU
+-- in this table is suppressed from goat_displaced/gone_products alerts —
+-- GOAT Life runs intentional limited "drops" (streetwear-style scarcity),
+-- so a SKU going out of stock is often deliberate, not a real disruption.
+CREATE TABLE IF NOT EXISTS sku_drop_calendar (
+    drop_calendar_id  SERIAL PRIMARY KEY,
+    sku_name          TEXT UNIQUE NOT NULL,
+    paused_since      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    note              TEXT
+);
