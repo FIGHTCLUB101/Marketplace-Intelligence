@@ -162,9 +162,9 @@ SHELF_LATEST_TWO_RUNS_SQL = """
 def fetch_latest_two_scrape_run_ids(conn, platform):
     """Returns (newest_id, second_newest_id). second_newest_id is None if
     only one run exists for this platform; both are None if zero exist."""
-    with conn.cursor() as cur:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(SHELF_LATEST_TWO_RUNS_SQL, (platform,))
-        ids = [row[0] for row in cur.fetchall()]
+        ids = [row["scrape_run_id"] for row in cur.fetchall()]
     if not ids:
         return None, None
     if len(ids) == 1:
@@ -186,9 +186,9 @@ def fetch_snapshot_rows(conn, scrape_run_id):
 
 
 def fetch_drop_calendar(conn):
-    with conn.cursor() as cur:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("SELECT sku_name FROM sku_drop_calendar")
-        return {row[0] for row in cur.fetchall()}
+        return {row["sku_name"] for row in cur.fetchall()}
 
 
 BRAND_DEFENCE_RATE_SQL = """
@@ -205,9 +205,10 @@ def fetch_brand_defence_rate(conn, scrape_run_id):
     where a GOAT Life product holds rank 1. None if the run has zero
     numeric-rank rows (shouldn't happen for a real scrape, but avoids a
     divide-by-zero on a pathological/empty run)."""
-    with conn.cursor() as cur:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(BRAND_DEFENCE_RATE_SQL, (scrape_run_id,))
-        goat_rank1_count, total_localities = cur.fetchone()
+        row = cur.fetchone()
+        goat_rank1_count, total_localities = row["goat_rank1_count"], row["total_localities"]
     if not total_localities:
         return None
     return round(100 * goat_rank1_count / total_localities, 1)
