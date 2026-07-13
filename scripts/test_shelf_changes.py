@@ -138,6 +138,22 @@ def test_goat_gone_unique_includes_rank_5_plus_goat_sku_that_vanished():
     assert result[0]["product"] == "GOAT Life Choco Hazelnut"
 
 
+def test_goat_gone_unique_does_not_exclude_same_named_sku_in_different_locality():
+    # "GOAT Life X" displaced (rank 1-4) in Bandra AND separately vanished
+    # (rank 5+) in Andheri, same week — two distinct real events, not a
+    # duplicate. The Andheri one must NOT be excluded just because the same
+    # product name appears in goat_displaced for a different locality.
+    changes = {
+        "goat_displaced": [{"city": "Mumbai", "locality": "Bandra", "rank": 1,
+                             "was": "GOAT Life X", "now": "MISSING"}],
+        "gone_products": [{"city": "Mumbai", "locality": "Andheri", "rank": 6,
+                            "product": "GOAT Life X", "is_goat": True}],
+    }
+    result = goat_gone_unique(changes)
+    assert len(result) == 1
+    assert result[0]["locality"] == "Andheri"
+
+
 def test_narrative_does_not_double_count_rank_1_4_goat_sku_that_vanished():
     # A GOAT SKU displaced from rank 1-4 AND gone is ONE event, not two.
     changes = {

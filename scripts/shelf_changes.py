@@ -115,10 +115,12 @@ def detect_changes(rows_new, rows_old, drop_calendar=None, price_threshold_inr=2
 def goat_gone_unique(changes):
     """GOAT gone_products entries not already represented in goat_displaced
     (which covers rank 1-4 SKUs that vanished — same event, don't double-count).
-    The remainder is GOAT SKUs that vanished while already ranked 5+, which
-    goat_displaced never captures at all."""
-    displaced_names = {e["was"] for e in changes["goat_displaced"]}
-    return [g for g in changes["gone_products"] if g["is_goat"] and g["product"] not in displaced_names]
+    Keyed by the full (city, locality, product) identity, not name alone — the
+    same SKU can independently vanish in one locality while being separately
+    displaced in another, and both are real, distinct events."""
+    displaced_keys = {(e["city"], e["locality"], e["was"]) for e in changes["goat_displaced"]}
+    return [g for g in changes["gone_products"]
+            if g["is_goat"] and (g["city"], g["locality"], g["product"]) not in displaced_keys]
 
 
 def generate_narrative_summary(changes):
