@@ -4,6 +4,8 @@ const L = (typeof window !== 'undefined' && window.LOCALITIES) || [];
 L.forEach((l, i) => (l._idx = i));
 let map;
 const truthy = (v) => v === true || v === 'true' || v === 'True';
+const RING_COLOR = { Confirmed: '#059669', Likely: '#d97706', Unknown: '#6B6B66' };
+const RING_RADIUS_KM = 3.5;
 
 function fc(records) {
   return {
@@ -89,6 +91,11 @@ export function initMap() {
         'circle-color': ['get', 'color'], 'circle-stroke-width': 1.2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.9,
       },
     });
+    map.addSource('coverage-ring', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+      id: 'coverage-ring-line', type: 'line', source: 'coverage-ring',
+      paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [4, 3], 'line-opacity': 0.85 },
+    });
 
     map.on('click', 'clusters', (e) => {
       const f = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0];
@@ -117,6 +124,13 @@ export function highlightBelt(beltId) {
     { padding: 70, maxZoom: 13, duration: 600 });
 }
 
+export function hideProfile() {
+  document.getElementById('profile').classList.remove('open');
+  const src = map && map.getSource('coverage-ring');
+  if (src) src.setData({ type: 'FeatureCollection', features: [] });
+}
+window.__hideLocalityProfile = hideProfile;
+
 export function showProfile(p) {
   const panel = document.getElementById('profile');
   const c = colorFor(p.gtm_action);
@@ -128,6 +142,16 @@ export function showProfile(p) {
   const brands = (p.n_brands_confirmed || 0) + '/3' + (p.brands_confirmed_list ? ' · ' + p.brands_confirmed_list : '');
 
   const num = (v) => (v !== '' && v != null) ? +v : null;
+  const brandDistRow = (label, km) =>
+    row(label, (km != null && km <= RING_RADIUS_KM) ? km + ' km' : '—', true);
+  const brandSection = `
+    <div class="p-sep"></div>
+    <div class="p-section-head">Nearest by brand</div>
+    <div class="p-grid">
+      ${brandDistRow('Blinkit', num(p.nearest_blinkit_km))}
+      ${brandDistRow('Zepto', num(p.nearest_zepto_km))}
+      ${brandDistRow('Swiggy Instamart', num(p.nearest_swiggy_km))}
+    </div>`;
   const blComp = num(p.blinkit_n_competitor_brands);
   const blAvg  = num(p.blinkit_competitor_avg_price);
   const blAdv  = num(p.price_advantage_blinkit);
@@ -145,7 +169,7 @@ export function showProfile(p) {
   panel.innerHTML = `
     <div class="p-head">
       <div><div class="p-area">${p.AREA.split(',')[0].trim()}</div><div class="p-sub">${p.ADDRESS} · PIN ${p.PINCODE || '—'}</div></div>
-      <button class="p-x" onclick="document.getElementById('profile').classList.remove('open')">×</button>
+      <button class="p-x" onclick="window.__hideLocalityProfile()">×</button>
     </div>
     <div class="gtm-status" style="color:${c}">● ${labelFor(p.gtm_action)}</div>
     <div class="p-icp">
@@ -162,6 +186,7 @@ export function showProfile(p) {
       ${row('Employer quality', p.employer_quality != null && p.employer_quality !== '' ? Math.round(+p.employer_quality) : '—', true)}
       ${row('Metro', truthy(p.is_metro_connected) ? 'Yes' : 'No')}
     </div>
+    ${brandSection}
     ${compSection}
     <div class="pills">
       ${gem(truthy(p.pareto_optimal), 'Pareto-optimal', '#E6F1FB', '#185FA5')}
@@ -169,5 +194,9 @@ export function showProfile(p) {
       ${gem(truthy(p.spillover_gem), 'Spillover gem', '#EAF3DE', '#3B6D11')}
     </div>`;
   panel.classList.add('open');
-  if (map && p.lat) map.easeTo({ center: [+p.lng, +p.lat], zoom: 11, duration: 600 });
+  if (map && p.lat) {
+    map.easeTo({ center: [+p.lng, +p.lat], zoom: 11, duration: 600 });
+    const ring = circlePolygon(+p.lat, +p.lng, RING_RADIUS_KM, RING_COLOR[p.serviceability_state] || RING_COLOR.Unknown);
+    map.getSource('coverage-ring').setData({ type: 'FeatureCollection', features: [ring] });
+  }
 }
