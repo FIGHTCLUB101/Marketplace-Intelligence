@@ -214,8 +214,117 @@ async function renderThisWeek(el) {
   }
 }
 
+const COMPETITOR_PLATFORMS = [
+  { value: 'blinkit', label: 'Blinkit' },
+  { value: 'swiggy', label: 'Instamart' },
+  { value: 'zepto', label: 'Zepto' },
+];
+const COMPETITOR_BRANDS = [
+  'Alpino', 'Cosmix', 'MuscleBlaze', 'Pintola', 'Quaker', 'Saffola', 'SuperYou',
+  'The Whole Truth', 'True Elements', 'Yoga Bar',
+];
+
+const compareState = { snapshots: {}, visibilityRates: {} };
+
+async function fetchPlatformSnapshot(platform) {
+  if (!compareState.snapshots[platform]) {
+    compareState.snapshots[platform] = await fetchJson(`/api/shelf/snapshot?platform=${platform}`);
+    compareState.visibilityRates[platform] = computeVisibilityRate(compareState.snapshots[platform]);
+  }
+  return compareState.snapshots[platform];
+}
+
+function headlineStatRow() {
+  const stats = COMPETITOR_PLATFORMS.map((p) => {
+    const rate = compareState.visibilityRates[p.value];
+    const text = rate === null || rate === undefined ? '…' : `${rate.toFixed(1)}%`;
+    return `<div class="visibility-stat"><span class="stat-label">${p.label}</span><span class="stat-val">${text}</span></div>`;
+  }).join('');
+  return `<div class="visibility-row">${stats}</div>`;
+}
+
+function compareTableRows(rows, brand, city, locality) {
+  const normalized = normalizeBrandName(brand);
+  const brandRows = rows.filter((r) => normalizeBrandName(r.brand_searched || '') === normalized);
+  const goatLocalities = new Set(
+    rows.filter((r) => r.is_goat).map((r) => `${r.city_raw}|||${r.locality_raw}`)
+  );
+  const filtered = brandRows.filter((r) =>
+    (city === 'all' || r.city_raw === city) && (locality === 'all' || r.locality_raw === locality));
+  const hasRank = brandRows.some((r) => r.rank !== null && r.rank !== undefined);
+  return { filtered, hasRank, goatLocalities };
+}
+
+function renderCompareTable(rows, brand, city, locality) {
+  const { filtered, hasRank, goatLocalities } = compareTableRows(rows, brand, city, locality);
+  if (!filtered.length) return '<p class="info">No data for this brand/filter combination.</p>';
+  const head = `<tr><th>City</th><th>Locality</th>${hasRank ? '<th>Rank</th>' : ''}<th>Price</th><th>MRP</th><th>Discount %</th><th>GOAT also here?</th></tr>`;
+  const body = filtered.map((r) => {
+    const goatHere = goatLocalities.has(`${r.city_raw}|||${r.locality_raw}`) ? 'Yes' : 'No';
+    return `<tr><td>${r.city_raw}</td><td>${r.locality_raw}</td>${hasRank ? `<td class="mono">${r.rank ?? '—'}</td>` : ''}<td class="mono">${r.selling_price ?? '—'}</td><td class="mono">${r.mrp ?? '—'}</td><td class="mono">${r.discount_pct ?? '—'}</td><td>${goatHere}</td></tr>`;
+  }).join('');
+  return `<table class="lb">${head}${body}</table>`;
+}
+
+function fillCompareCityLocality(citySel, localitySel, rows, onChange) {
+  const byCity = new Map();
+  rows.forEach((r) => {
+    if (!byCity.has(r.city_raw)) byCity.set(r.city_raw, new Set());
+    byCity.get(r.city_raw).add(r.locality_raw);
+  });
+  citySel.innerHTML = '<option value="all">All cities</option>' +
+    [...byCity.keys()].sort().map((c) => `<option>${c}</option>`).join('');
+  fillLocalityOptions(localitySel, byCity, 'all');
+  citySel.onchange = () => { fillLocalityOptions(localitySel, byCity, citySel.value); onChange(); };
+}
+
+async function renderCompareBrands(el) {
+  el.innerHTML = `
+    ${headlineStatRow()}
+    <div class="filter-row">
+      <div class="field"><label>Platform</label><select class="f-cmp-platform"><option value="">Select a platform</option>${COMPETITOR_PLATFORMS.map((p) => `<option value="${p.value}">${p.label}</option>`).join('')}</select></div>
+      <div class="field"><label>Brand</label><select class="f-cmp-brand">${COMPETITOR_BRANDS.map((b) => `<option>${b}</option>`).join('')}</select></div>
+      <div class="field"><label>City</label><select class="f-cmp-city"><option value="all">All cities</option></select></div>
+      <div class="field"><label>Locality</label><select class="f-cmp-locality"><option value="all">All localities</option></select></div>
+    </div>
+    <div class="compare-table"><p class="info">Select a platform to see current shelf data.</p></div>`;
+
+  const platformSel = el.querySelector('.f-cmp-platform');
+  const brandSel = el.querySelector('.f-cmp-brand');
+  const citySel = el.querySelector('.f-cmp-city');
+  const localitySel = el.querySelector('.f-cmp-locality');
+  const table = el.querySelector('.compare-table');
+
+  const rerenderTable = () => {
+    const rows = compareState.snapshots[platformSel.value] || [];
+    table.innerHTML = renderCompareTable(rows, brandSel.value, citySel.value, localitySel.value);
+  };
+
+  platformSel.addEventListener('change', async () => {
+    const platform = platformSel.value;
+    if (!platform) {
+      table.innerHTML = '<p class="info">Select a platform to see current shelf data.</p>';
+      return;
+    }
+    table.innerHTML = '<p class="info">Loading…</p>';
+    try {
+      const rows = await fetchPlatformSnapshot(platform);
+      el.querySelector('.visibility-row').outerHTML = headlineStatRow();
+      fillCompareCityLocality(citySel, localitySel, rows, rerenderTable);
+    } catch (e) {
+      console.error('Compare Brands snapshot fetch failed', e);
+      table.innerHTML = '<p class="info">Failed to load — check the API is running.</p>';
+      return;
+    }
+    rerenderTable();
+  });
+  brandSel.addEventListener('change', rerenderTable);
+  localitySel.addEventListener('change', rerenderTable);
+}
+
 const SUBTABS = [
   { id: 'this-week', label: 'This Week', render: renderThisWeek },
+  { id: 'compare', label: 'Compare Brands', render: renderCompareBrands },
 ];
 
 async function render() {
