@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import {
-  computeVisibilityRate, formatBrandDefenceRate, formatTrendRows, normalizeBrandName, severityFor,
+  computeVisibilityRate, formatBrandDefenceRate, formatTrendRows, groupChangesByProduct,
+  normalizeBrandName, severityFor,
 } from '../shelf-monitor.js';
 
 test('severityFor: critical when goat_displaced or goat_gone non-empty', () => {
@@ -47,4 +48,48 @@ test('computeVisibilityRate: percentage of is_goat rows, null for empty', () => 
   assert.equal(computeVisibilityRate([{ is_goat: true }, { is_goat: false }]), 50);
   assert.equal(computeVisibilityRate([{ is_goat: false }, { is_goat: false }]), 0);
   assert.equal(computeVisibilityRate([{ is_goat: true }]), 100);
+});
+
+test('groupChangesByProduct groups same (eventType, product) pairs and counts entries', () => {
+  const changes = {
+    goat_displaced: [
+      { city: 'Mumbai', locality: 'Sion', rank: 1, was: 'GOAT Life Mocha Marvel', now: 'MISSING' },
+      { city: 'Pune', locality: 'Wakad', rank: 2, was: 'GOAT Life Mocha Marvel', now: 'Still listed, now rank 5' },
+    ],
+    goat_gone: [],
+    rank_intrusions: [
+      { city: 'Delhi', locality: 'Saket', rank: 1, intruder: 'Yoga Bar Oats' },
+    ],
+    price_changes: [],
+    new_products: [],
+    gone_products: [
+      { city: 'Pune', locality: 'Baner', rank: 4, product: 'Saffola Oats', is_goat: false },
+      { city: 'Delhi', locality: 'Saket', rank: 2, product: 'GOAT Life Mocha Marvel', is_goat: true },
+    ],
+  };
+  const groups = groupChangesByProduct(changes);
+  assert.equal(groups.length, 3);
+
+  const displaced = groups.find((g) => g.eventType === 'goat_displaced');
+  assert.equal(displaced.product, 'GOAT Life Mocha Marvel');
+  assert.equal(displaced.severity, 'critical');
+  assert.equal(displaced.entries.length, 2);
+  assert.deepEqual(displaced.entries[0], { city: 'Mumbai', locality: 'Sion', detail: 'MISSING' });
+
+  const intrusion = groups.find((g) => g.eventType === 'rank_intrusions');
+  assert.equal(intrusion.severity, 'warning');
+  assert.equal(intrusion.entries[0].detail, 'intruded at rank 1');
+
+  // GOAT's own gone_products entry (is_goat: true) must be excluded.
+  const gone = groups.find((g) => g.eventType === 'gone_products');
+  assert.equal(gone.entries.length, 1);
+  assert.equal(gone.product, 'Saffola Oats');
+});
+
+test('groupChangesByProduct returns an empty array for no changes', () => {
+  const changes = {
+    goat_displaced: [], goat_gone: [], rank_intrusions: [], price_changes: [],
+    new_products: [], gone_products: [],
+  };
+  assert.deepEqual(groupChangesByProduct(changes), []);
 });

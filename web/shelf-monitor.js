@@ -29,6 +29,65 @@ export function computeVisibilityRate(rows) {
   return (100 * rows.filter((r) => r.is_goat).length) / rows.length;
 }
 
+const EVENT_META = {
+  goat_displaced: { severity: 'critical', label: 'displaced' },
+  goat_gone: { severity: 'critical', label: 'no longer listed' },
+  rank_intrusions: { severity: 'warning', label: 'intruded' },
+  price_changes: { severity: 'warning', label: 'price moved' },
+  new_products: { severity: 'info', label: 'appeared' },
+  gone_products: { severity: 'info', label: 'no longer listed' },
+};
+
+function entryFor(eventType, e) {
+  switch (eventType) {
+    case 'goat_displaced':
+      return { city: e.city, locality: e.locality, product: e.was, detail: e.now };
+    case 'goat_gone':
+      return { city: e.city, locality: e.locality, product: e.product, detail: `last seen rank ${e.rank}` };
+    case 'rank_intrusions':
+      return { city: e.city, locality: e.locality, product: e.intruder, detail: `intruded at rank ${e.rank}` };
+    case 'price_changes': {
+      const dir = e.change < 0 ? '▼' : '▲';
+      return {
+        city: e.city, locality: e.locality, product: e.product,
+        detail: `${dir}₹${Math.abs(e.change).toFixed(0)} (₹${e.old_price} → ₹${e.new_price})`,
+      };
+    }
+    case 'new_products':
+      return { city: e.city, locality: e.locality, product: e.product, detail: `appeared at rank ${e.rank}` };
+    case 'gone_products':
+      return { city: e.city, locality: e.locality, product: e.product, detail: 'no longer listed' };
+    default:
+      throw new Error(`unknown eventType: ${eventType}`);
+  }
+}
+
+export function groupChangesByProduct(changes) {
+  const eventLists = {
+    goat_displaced: changes.goat_displaced,
+    goat_gone: changes.goat_gone,
+    rank_intrusions: changes.rank_intrusions,
+    price_changes: changes.price_changes,
+    new_products: changes.new_products,
+    gone_products: changes.gone_products.filter((e) => !e.is_goat),
+  };
+  const groups = new Map();
+  Object.entries(eventLists).forEach(([eventType, list]) => {
+    list.forEach((e) => {
+      const entry = entryFor(eventType, e);
+      const key = `${eventType}::${entry.product}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key, eventType, severity: EVENT_META[eventType].severity, label: EVENT_META[eventType].label,
+          product: entry.product, entries: [],
+        });
+      }
+      groups.get(key).entries.push({ city: entry.city, locality: entry.locality, detail: entry.detail });
+    });
+  });
+  return [...groups.values()];
+}
+
 async function fetchJson(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url} -> ${res.status}`);
