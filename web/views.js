@@ -1,4 +1,5 @@
 import { colorFor, labelFor } from './contract.js';
+import { wireSortableTable } from './sortable-table.js';
 
 const L = window.LOCALITIES || [];
 
@@ -43,26 +44,44 @@ export function renderLeaderboard() {
 
   const insightsHtml = `<div class="insight-cards">${top5.map((l, i) => insightCard(l, i + 1)).join('')}</div>`;
 
+  const restRanked = rest.map((l, i) => ({ ...l, _rank: i + 6 }));
+
+  const goatRank = (l) => {
+    if (l.blinkit_goat_present === '' || l.blinkit_goat_present == null) return 0;
+    return truthy(l.blinkit_goat_present) ? 2 : 1;
+  };
+
+  const renderTableRow = (l) => {
+    const a = num(l.price_advantage_blinkit);
+    const goatBL = l.blinkit_goat_present !== '' && l.blinkit_goat_present != null
+      ? (truthy(l.blinkit_goat_present) ? '<span style="color:var(--status-success)">✓</span>' : '<span style="color:var(--status-neutral)">—</span>')
+      : '<span style="color:#ccc">n/a</span>';
+    return `<tr>
+      <td class="mono">${l._rank}</td><td>${l.AREA.split(',')[0].trim()}</td><td>${l.ADDRESS}</td>
+      <td class="mono">${Math.round(+l.icp_score)}</td><td>${verdictBadge(l.icp_verdict)}</td>
+      <td>${l.serviceability_state}</td><td>${l.archetype_ml}</td>
+      <td>${gtmDot(l.gtm_action)}</td>
+      <td class="mono">${goatBL}</td>
+      <td class="mono">${a !== null ? '<span style="color:var(--status-success)">+₹' + Math.round(a) + '</span>' : '—'}</td></tr>`;
+  };
+
   const tableHtml = `
-    <table class="lb"><thead><tr>
-      <th>#</th><th>Locality</th><th>City</th><th>ICP</th><th>Verdict</th><th>Serviceability</th>
-      <th>Archetype</th><th>Action</th><th>GOAT on BL</th><th>Price Adv.</th></tr></thead><tbody>
-    ${rest.map((l, i) => {
-      const a = num(l.price_advantage_blinkit);
-      const goatBL = l.blinkit_goat_present !== '' && l.blinkit_goat_present != null
-        ? (truthy(l.blinkit_goat_present) ? '<span style="color:var(--status-success)">✓</span>' : '<span style="color:var(--status-neutral)">—</span>')
-        : '<span style="color:#ccc">n/a</span>';
-      return `<tr>
-        <td class="mono">${i + 6}</td><td>${l.AREA.split(',')[0].trim()}</td><td>${l.ADDRESS}</td>
-        <td class="mono">${Math.round(+l.icp_score)}</td><td>${verdictBadge(l.icp_verdict)}</td>
-        <td>${l.serviceability_state}</td><td>${l.archetype_ml}</td>
-        <td>${gtmDot(l.gtm_action)}</td>
-        <td class="mono">${goatBL}</td>
-        <td class="mono">${a !== null ? '<span style="color:var(--status-success)">+₹' + Math.round(a) + '</span>' : '—'}</td></tr>`;
-    }).join('')}
-    </tbody></table>`;
+    <div class="table-wrap">
+    <table class="lb" id="leaderboard-table"><thead><tr>
+      <th>#</th><th data-sort-key="locality">Locality</th><th data-sort-key="city">City</th><th data-sort-key="icp">ICP</th><th>Verdict</th><th>Serviceability</th>
+      <th>Archetype</th><th>Action</th><th data-sort-key="goat">GOAT on BL</th><th data-sort-key="price">Price Adv.</th></tr></thead><tbody></tbody></table>
+    </div>`;
 
   document.getElementById('leaderboard').innerHTML = insightsHtml + tableHtml;
+
+  const columns = [
+    { key: 'locality', sort: (a, b) => a.AREA.localeCompare(b.AREA) },
+    { key: 'city', sort: (a, b) => a.ADDRESS.localeCompare(b.ADDRESS) },
+    { key: 'icp', sort: (a, b) => +a.icp_score - +b.icp_score },
+    { key: 'goat', sort: (a, b) => goatRank(a) - goatRank(b) },
+    { key: 'price', sort: (a, b) => (num(a.price_advantage_blinkit) ?? -Infinity) - (num(b.price_advantage_blinkit) ?? -Infinity) },
+  ];
+  wireSortableTable(document.getElementById('leaderboard-table'), restRanked, columns, renderTableRow);
 }
 
 export function renderGems() {
