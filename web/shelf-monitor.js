@@ -127,7 +127,7 @@ function groupCard(g) {
     `<div class="group-entry">${e.city} (${e.locality}) — ${e.detail}</div>`
   ).join('');
   return `
-    <div class="alert-row ${g.severity} group-card" data-key="${g.key}">
+    <div class="alert-row ${g.severity} group-card">
       <div class="group-head">
         <strong>${g.product}</strong> ${g.label}
         <span class="group-count">in ${g.entries.length} localit${g.entries.length === 1 ? 'y' : 'ies'}</span>

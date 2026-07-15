@@ -86,6 +86,38 @@ test('groupChangesByProduct groups same (eventType, product) pairs and counts en
   assert.equal(gone.product, 'Saffola Oats');
 });
 
+test('groupChangesByProduct formats detail strings for goat_gone, price_changes, and new_products', () => {
+  const changes = {
+    goat_displaced: [],
+    goat_gone: [
+      { city: 'Chennai', locality: 'Adyar', rank: 3, product: 'GOAT Life Mocha Marvel', is_goat: true },
+    ],
+    rank_intrusions: [],
+    price_changes: [
+      { city: 'Bangalore', locality: 'Koramangala', product: 'Yoga Bar Oats', old_price: 98, new_price: 230, change: 132 },
+      { city: 'Bangalore', locality: 'HSR Layout', product: 'Yoga Bar Oats', old_price: 230, new_price: 98, change: -132 },
+    ],
+    new_products: [
+      { city: 'Pune', locality: 'Baner', rank: 7, product: 'Tata Soulfull Berry Chia Protein Oats' },
+    ],
+    gone_products: [],
+  };
+  const groups = groupChangesByProduct(changes);
+
+  const gone = groups.find((g) => g.eventType === 'goat_gone');
+  assert.equal(gone.severity, 'critical');
+  assert.equal(gone.entries[0].detail, 'last seen rank 3');
+
+  const priceChanges = groups.find((g) => g.eventType === 'price_changes');
+  assert.equal(priceChanges.severity, 'warning');
+  assert.equal(priceChanges.entries[0].detail, '▲₹132 (₹98 → ₹230)');
+  assert.equal(priceChanges.entries[1].detail, '▼₹132 (₹230 → ₹98)');
+
+  const appeared = groups.find((g) => g.eventType === 'new_products');
+  assert.equal(appeared.severity, 'info');
+  assert.equal(appeared.entries[0].detail, 'appeared at rank 7');
+});
+
 test('groupChangesByProduct returns an empty array for no changes', () => {
   const changes = {
     goat_displaced: [], goat_gone: [], rank_intrusions: [], price_changes: [],
