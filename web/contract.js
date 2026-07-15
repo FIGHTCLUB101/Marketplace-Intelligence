@@ -4,9 +4,10 @@ export const GTM_ACTIONS = [
   'PUSH-NOW', 'SAMPLE + QC test', 'SAMPLE (D2C / offline)', 'D2C / OFFLINE - verify QC', 'HOLD',
 ];
 
-// PUSH-NOW and HOLD intentionally match styles.css's --status-success/--status-neutral tokens
-// (see docs/superpowers/specs/2026-07-15-design-system-foundation-design.md) — not re-derived from
-// them, since this file is also read by Python-side tooling with no CSS access.
+// PUSH-NOW intentionally matches styles.css's --status-success token (both #059669) — not
+// re-derived from it, since this file is also read by Python-side tooling with no CSS access.
+// HOLD's #888780 is its own GTM-categorical gray, deliberately distinct from --status-neutral
+// (#6B6B66) — see docs/superpowers/specs/2026-07-15-design-system-foundation-design.md.
 export const GTM_COLORS = {
   'PUSH-NOW':                  '#059669',
   'SAMPLE + QC test':          '#d97706',
