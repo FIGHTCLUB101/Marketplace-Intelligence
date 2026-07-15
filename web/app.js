@@ -33,10 +33,15 @@ function renderKpis() {
   const gems = L.filter((l) => truthy(l.pareto_optimal) || truthy(l.hidden_gem_v2) || truthy(l.spillover_gem)).length;
   const conf = mapped ? Math.round(100 * L.filter((l) => l.serviceability_state === 'Confirmed').length / mapped) : 0;
   document.getElementById('kpi-ribbon').innerHTML = `
-    <div class="kpi"><div class="kn">1,001<span class="ks">${mapped} mapped</span></div><div class="kl">Localities analysed</div></div>
-    <div class="kpi"><div class="kn" style="color:var(--status-success)">${push}</div><div class="kl">Ready to launch · push-now</div></div>
-    <div class="kpi"><div class="kn">${gems}</div><div class="kl">Untapped markets</div></div>
-    <div class="kpi"><div class="kn">${conf}%</div><div class="kl">Quick-commerce confirmed</div></div>`;
+    <div class="kpi primary">
+      <div class="kn">1,001<span class="ks">${mapped} mapped</span></div>
+      <div class="kl">Localities analysed</div>
+    </div>
+    <div class="kpi-secondary">
+      <div class="kpi"><div class="kn" style="color:var(--status-success)">${push}</div><div class="kl">Ready to launch · push-now</div></div>
+      <div class="kpi"><div class="kn">${gems}</div><div class="kl">Untapped markets</div></div>
+      <div class="kpi"><div class="kn">${conf}%</div><div class="kl">Quick-commerce confirmed</div></div>
+    </div>`;
 }
 
 function buildLedger() {
