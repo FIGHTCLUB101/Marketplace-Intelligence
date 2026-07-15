@@ -80,6 +80,9 @@ body{font-family:var(--sans);background:var(--paper);color:var(--ink);height:100
 .lb td{padding:8px 10px;border-bottom:1px solid var(--line)}
 .lb td.mono{font-family:var(--mono)}
 .lb tr:hover td{background:var(--hover-bg)}
+/* overflow-y + max-height are required, not decorative: overflow-x alone forces overflow-y
+   to a non-visible computed value, making this div the sticky header's scroll ancestor
+   instead of .view. Bounding its height gives it a real scroll region to pin within. */
 .table-wrap{overflow-x:auto;overflow-y:auto;max-height:70vh}
 .badge{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:4px;text-transform:uppercase}
 h2.vt{font-size:17px;font-weight:600;margin-bottom:4px}
