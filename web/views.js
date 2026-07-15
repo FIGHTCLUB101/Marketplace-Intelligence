@@ -14,17 +14,46 @@ export function renderLeaderboard() {
   const rows = [...L].sort((a, b) => +b.icp_score - +a.icp_score).slice(0, 60);
   const num = (v) => (v !== '' && v != null) ? +v : null;
   const truthy = (v) => v === true || v === 'true' || v === 'True';
-  document.getElementById('leaderboard').innerHTML = `
+
+  const goatPart = (l) => {
+    if (l.blinkit_goat_present === '' || l.blinkit_goat_present == null) return null;
+    return `GOAT on Blinkit ${truthy(l.blinkit_goat_present) ? '<span style="color:var(--status-success)">✓</span>' : '<span style="color:var(--status-neutral)">—</span>'}`;
+  };
+  const pricePart = (a) => a !== null ? `<span style="color:var(--status-success)">+₹${Math.round(a)}</span> price advantage` : null;
+
+  const insightCard = (l, rank) => {
+    const a = num(l.price_advantage_blinkit);
+    const metaParts = [goatPart(l), pricePart(a)].filter(Boolean);
+    const metaLine2 = metaParts.length ? `<div class="insight-meta">${metaParts.join(' · ')}</div>` : '';
+    return `
+      <div class="insight-card">
+        <div class="insight-head">
+          <span class="insight-rank">#${rank}</span>
+          <span class="insight-action" style="color:${colorFor(l.gtm_action)}">● ${labelFor(l.gtm_action)}</span>
+          <span class="insight-icp">ICP <b>${Math.round(+l.icp_score)}</b></span>
+        </div>
+        <div class="insight-locality">${l.AREA.split(',')[0].trim()} <span class="insight-city">· ${l.ADDRESS}</span></div>
+        <div class="insight-meta">${l.serviceability_state} · ${l.archetype_ml}</div>
+        ${metaLine2}
+      </div>`;
+  };
+
+  const top5 = rows.slice(0, 5);
+  const rest = rows.slice(5);
+
+  const insightsHtml = `<div class="insight-cards">${top5.map((l, i) => insightCard(l, i + 1)).join('')}</div>`;
+
+  const tableHtml = `
     <table class="lb"><thead><tr>
       <th>#</th><th>Locality</th><th>City</th><th>ICP</th><th>Verdict</th><th>Serviceability</th>
       <th>Archetype</th><th>Action</th><th>GOAT on BL</th><th>Price Adv.</th></tr></thead><tbody>
-    ${rows.map((l, i) => {
+    ${rest.map((l, i) => {
       const a = num(l.price_advantage_blinkit);
       const goatBL = l.blinkit_goat_present !== '' && l.blinkit_goat_present != null
         ? (truthy(l.blinkit_goat_present) ? '<span style="color:var(--status-success)">✓</span>' : '<span style="color:var(--status-neutral)">—</span>')
         : '<span style="color:#ccc">n/a</span>';
       return `<tr>
-        <td class="mono">${i + 1}</td><td>${l.AREA.split(',')[0].trim()}</td><td>${l.ADDRESS}</td>
+        <td class="mono">${i + 6}</td><td>${l.AREA.split(',')[0].trim()}</td><td>${l.ADDRESS}</td>
         <td class="mono">${Math.round(+l.icp_score)}</td><td>${verdictBadge(l.icp_verdict)}</td>
         <td>${l.serviceability_state}</td><td>${l.archetype_ml}</td>
         <td>${gtmDot(l.gtm_action)}</td>
@@ -32,6 +61,8 @@ export function renderLeaderboard() {
         <td class="mono">${a !== null ? '<span style="color:var(--status-success)">+₹' + Math.round(a) + '</span>' : '—'}</td></tr>`;
     }).join('')}
     </tbody></table>`;
+
+  document.getElementById('leaderboard').innerHTML = insightsHtml + tableHtml;
 }
 
 export function renderGems() {
