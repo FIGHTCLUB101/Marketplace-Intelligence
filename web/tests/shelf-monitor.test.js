@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { formatBrandDefenceRate, formatTrendRows, severityFor } from '../shelf-monitor.js';
+import {
+  computeVisibilityRate, formatBrandDefenceRate, formatTrendRows, normalizeBrandName, severityFor,
+} from '../shelf-monitor.js';
 
 test('severityFor: critical when goat_displaced or goat_gone non-empty', () => {
   assert.equal(severityFor({ goat_displaced: [{}], goat_gone: [], rank_intrusions: [] }), 'critical');
@@ -32,4 +34,17 @@ test('formatBrandDefenceRate: formats a number, handles null', () => {
   assert.equal(formatBrandDefenceRate(75.0), '75.0%');
   assert.equal(formatBrandDefenceRate(0), '0.0%');
   assert.equal(formatBrandDefenceRate(null), 'N/A');
+});
+
+test('normalizeBrandName strips a trailing " Oats" suffix', () => {
+  assert.equal(normalizeBrandName('Pintola Oats'), 'Pintola');
+  assert.equal(normalizeBrandName('The Whole Truth Oats'), 'The Whole Truth');
+  assert.equal(normalizeBrandName('Pintola'), 'Pintola');
+});
+
+test('computeVisibilityRate: percentage of is_goat rows, null for empty', () => {
+  assert.equal(computeVisibilityRate([]), null);
+  assert.equal(computeVisibilityRate([{ is_goat: true }, { is_goat: false }]), 50);
+  assert.equal(computeVisibilityRate([{ is_goat: false }, { is_goat: false }]), 0);
+  assert.equal(computeVisibilityRate([{ is_goat: true }]), 100);
 });

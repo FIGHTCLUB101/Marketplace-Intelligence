@@ -20,6 +20,15 @@ export function formatBrandDefenceRate(value) {
   return value === null || value === undefined ? 'N/A' : `${value.toFixed(1)}%`;
 }
 
+export function normalizeBrandName(name) {
+  return name.replace(/\s+Oats$/i, '').trim();
+}
+
+export function computeVisibilityRate(rows) {
+  if (!rows.length) return null;
+  return (100 * rows.filter((r) => r.is_goat).length) / rows.length;
+}
+
 async function fetchJson(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url} -> ${res.status}`);
