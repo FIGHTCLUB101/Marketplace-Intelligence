@@ -72,9 +72,15 @@ body{font-family:var(--sans);background:var(--paper);color:var(--ink);height:100
 .pad{padding:22px}
 .lb{width:100%;border-collapse:collapse;font-size:13px}
 .lb th{text-align:left;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line)}
+.lb thead th{position:sticky;top:0;background:var(--paper);z-index:2}
+.lb th[data-sort-key]{cursor:pointer;user-select:none}
+.lb th[data-sort-key]:hover{color:var(--ink)}
+.lb th.sorted-asc::after{content:' \25B2';font-size:9px}
+.lb th.sorted-desc::after{content:' \25BC';font-size:9px}
 .lb td{padding:8px 10px;border-bottom:1px solid var(--line)}
 .lb td.mono{font-family:var(--mono)}
 .lb tr:hover td{background:var(--hover-bg)}
+.table-wrap{overflow-x:auto}
 .badge{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:4px;text-transform:uppercase}
 h2.vt{font-size:17px;font-weight:600;margin-bottom:4px}
 p.vd{color:var(--muted);font-size:13px;margin-bottom:18px;max-width:700px;line-height:1.55}
@@ -142,3 +148,14 @@ h3.gh{font-size:13px;font-weight:600;margin:22px 0 8px}
 .insight-locality{font-size:15px;font-weight:600;margin-bottom:4px}
 .insight-city{font-weight:400;color:var(--muted);font-size:13px}
 .insight-meta{font-size:12px;color:var(--muted);margin-top:2px}
+
+.skeleton{background:linear-gradient(90deg, var(--line) 25%, var(--surface) 50%, var(--line) 75%);background-size:200% 100%;animation:skeleton-pulse 1.5s ease-in-out infinite;border-radius:var(--radius)}
+.skeleton-kpi{height:64px;flex:1;margin:11px 22px}
+.skeleton-ledger{height:220px;margin:4px 0}
+@keyframes skeleton-pulse{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+.map-empty{display:none;position:absolute;inset:0;align-items:center;justify-content:center;flex-direction:column;gap:10px;background:var(--paper);z-index:4;text-align:center}
+.map-empty.show{display:flex}
+.map-empty p{font-size:14px;color:var(--muted)}
+.map-empty button{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 16px;cursor:pointer}
+.map-empty button:hover{border-color:var(--muted)}
