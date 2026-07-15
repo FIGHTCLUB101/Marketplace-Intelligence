@@ -395,3 +395,49 @@ def test_get_shelf_trends_returns_empty_series_for_unknown_platform():
     body = response.json()
     assert body["weeks"] == []
     assert body["series"] == []
+
+
+@requires_db
+def test_get_shelf_snapshot_returns_empty_list_for_platform_with_no_runs():
+    response = client.get("/api/shelf/snapshot?platform=test_platform_xyz_empty_snap")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+@requires_db
+def test_get_shelf_snapshot_returns_current_rows_for_seeded_platform():
+    conn = get_connection()
+    scrape_run_id = None
+    snapshot_id = None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_snap", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                "brand_searched, rank, product_name, selling_price, is_goat) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                (scrape_run_id, "test_platform_xyz_snap", "TestCityXYZ", "TestLocalityXYZ",
+                 "Yoga Bar Oats", None, "Yoga Bar Premium Golden Rolled Oats", 230.0, False),
+            )
+            snapshot_id = cur.fetchone()[0]
+        conn.commit()
+
+        response = client.get("/api/shelf/snapshot?platform=test_platform_xyz_snap")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["product_name"] == "Yoga Bar Premium Golden Rolled Oats"
+        assert body[0]["rank"] is None
+    finally:
+        with conn.cursor() as cur:
+            if snapshot_id is not None:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (snapshot_id,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()

@@ -146,3 +146,15 @@ def get_shelf_trends(platform: str = Query(default="blinkit_goatlife")):
         return queries.fetch_shelf_trends(conn, platform)
     finally:
         conn.close()
+
+
+@app.get("/api/shelf/snapshot", response_model=list[ShelfSnapshot])
+def get_shelf_snapshot(platform: str = Query(...)):
+    conn = get_connection()
+    try:
+        newest_id, _ = queries.fetch_latest_two_scrape_run_ids(conn, platform)
+        if newest_id is None:
+            return []
+        return queries.fetch_current_snapshot(conn, newest_id)
+    finally:
+        conn.close()
