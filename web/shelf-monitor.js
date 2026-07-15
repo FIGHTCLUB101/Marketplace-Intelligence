@@ -167,13 +167,17 @@ function fillLocalityOptions(select, byCity, city) {
     localities.sort().map((l) => `<option>${l}</option>`).join('');
 }
 
+let activeSubtabId = null;
+
 async function renderThisWeek(el) {
+  const myId = 'this-week';
   el.innerHTML = '<p class="info">Loading…</p>';
   try {
     const [changes, trends] = await Promise.all([
       fetchJson('/api/shelf/changes?platform=blinkit_goatlife'),
       fetchJson('/api/shelf/trends?platform=blinkit_goatlife'),
     ]);
+    if (activeSubtabId !== myId) return;
     if (changes.status === 'insufficient_history') {
       el.innerHTML = `<p class="info">${changes.narrative[0]}</p>`;
       return;
@@ -209,6 +213,7 @@ async function renderThisWeek(el) {
     localitySel.addEventListener('change', rerenderGroups);
     rerenderGroups();
   } catch (e) {
+    if (activeSubtabId !== myId) return;
     console.error('shelf-monitor This Week render failed', e);
     el.innerHTML = '<p class="info">Failed to load — check the API is running.</p>';
   }
@@ -279,6 +284,7 @@ function fillCompareCityLocality(citySel, localitySel, rows, onChange) {
 }
 
 async function renderCompareBrands(el) {
+  const myId = 'compare';
   el.innerHTML = `
     ${headlineStatRow()}
     <div class="filter-row">
@@ -309,9 +315,11 @@ async function renderCompareBrands(el) {
     table.innerHTML = '<p class="info">Loading…</p>';
     try {
       const rows = await fetchPlatformSnapshot(platform);
+      if (activeSubtabId !== myId || platformSel.value !== platform) return;
       el.querySelector('.visibility-row').outerHTML = headlineStatRow();
       fillCompareCityLocality(citySel, localitySel, rows, rerenderTable);
     } catch (e) {
+      if (activeSubtabId !== myId || platformSel.value !== platform) return;
       console.error('Compare Brands snapshot fetch failed', e);
       table.innerHTML = '<p class="info">Failed to load — check the API is running.</p>';
       return;
@@ -336,6 +344,7 @@ async function render() {
   const body = el.querySelector('.subtab-body');
   const activate = (id) => {
     el.querySelectorAll('.subtab').forEach((b) => b.classList.toggle('active', b.dataset.subtab === id));
+    activeSubtabId = id;
     SUBTABS.find((t) => t.id === id).render(body);
   };
   el.querySelectorAll('.subtab').forEach((b) => b.addEventListener('click', () => activate(b.dataset.subtab)));
