@@ -4,8 +4,8 @@ import pytest
 
 from db import get_connection
 from queries import (
-    compute_belts, fetch_brand_defence_rate, fetch_drop_calendar, fetch_latest_two_scrape_run_ids,
-    fetch_shelf_trends, fetch_snapshot_rows,
+    compute_belts, fetch_brand_defence_rate, fetch_current_snapshot, fetch_drop_calendar,
+    fetch_latest_two_scrape_run_ids, fetch_shelf_trends, fetch_snapshot_rows,
 )
 
 requires_db = pytest.mark.skipif(
@@ -107,6 +107,46 @@ def test_fetch_snapshot_rows_returns_expected_columns():
         rows = fetch_snapshot_rows(conn, scrape_run_id)
         assert len(rows) == 1
         assert rows[0]["product_name"] == "GOAT Life Mocha Marvel"
+    finally:
+        with conn.cursor() as cur:
+            if snapshot_id is not None:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (snapshot_id,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()
+
+
+@requires_db
+def test_fetch_current_snapshot_returns_full_columns_for_run():
+    conn = get_connection()
+    scrape_run_id = None
+    snapshot_id = None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_snapshot", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                "brand_searched, rank, product_name, selling_price, mrp, discount_pct, is_goat) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                (scrape_run_id, "test_platform_xyz_snapshot", "TestCityXYZ", "TestLocalityXYZ",
+                 "Pintola Oats", 3, "Pintola High Protein Oats", 199.0, 249.0, 20.0, False),
+            )
+            snapshot_id = cur.fetchone()[0]
+        conn.commit()
+
+        rows = fetch_current_snapshot(conn, scrape_run_id)
+        assert len(rows) == 1
+        assert rows[0]["product_name"] == "Pintola High Protein Oats"
+        assert rows[0]["brand_searched"] == "Pintola Oats"
+        assert rows[0]["rank"] == 3
+        assert rows[0]["mrp"] == 249.0
+        assert rows[0]["started_at"] is not None
     finally:
         with conn.cursor() as cur:
             if snapshot_id is not None:

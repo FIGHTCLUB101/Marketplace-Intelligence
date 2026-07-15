@@ -185,6 +185,28 @@ def fetch_snapshot_rows(conn, scrape_run_id):
         return cur.fetchall()
 
 
+SHELF_CURRENT_SNAPSHOT_SQL = """
+    SELECT
+        s.shelf_snapshot_id, s.platform, s.locality_id, s.city_raw, s.locality_raw,
+        s.brand_searched, s.rank, s.product_name, s.pack_size, s.selling_price,
+        s.mrp, s.discount_pct, s.stock_left, s.rating, s.reviews, s.sponsored,
+        s.serviceable, s.is_goat, r.started_at, r.finished_at
+    FROM shelf_snapshots s
+    JOIN scrape_runs r ON r.scrape_run_id = s.scrape_run_id
+    WHERE s.scrape_run_id = %s
+    ORDER BY s.city_raw, s.locality_raw
+"""
+
+
+def fetch_current_snapshot(conn, scrape_run_id):
+    """Returns every shelf_snapshots row for one run (all columns), unlike
+    fetch_snapshot_rows which only selects the narrow subset shelf_changes.py's
+    diff functions need. Used for current-state (non-diffed) views."""
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(SHELF_CURRENT_SNAPSHOT_SQL, (scrape_run_id,))
+        return cur.fetchall()
+
+
 def fetch_drop_calendar(conn):
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("SELECT sku_name FROM sku_drop_calendar")
