@@ -27,7 +27,7 @@ export function initMap() {
     container: 'map-container', style: 'https://tiles.openfreemap.org/styles/dark',
     center: [78.9629, 20.5937], zoom: 4.4, minZoom: 3, maxZoom: 16,
   });
-  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+  map.addControl(new maplibregl.NavigationControl(), 'top-left');
   window._map = map;
 
   map.on('load', async () => {
