@@ -27,7 +27,7 @@ export function initMap() {
     container: 'map-container', style: 'https://tiles.openfreemap.org/styles/dark',
     center: [78.9629, 20.5937], zoom: 4.4, minZoom: 3, maxZoom: 16,
   });
-  map.addControl(new maplibregl.NavigationControl(), 'top-right');
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
   window._map = map;
 
   map.on('load', async () => {
@@ -47,7 +47,7 @@ export function initMap() {
     } catch (e) { console.warn('darkstores load failed', e); }
 
     // Localities, clustered: neutral count bubbles at macro zoom -> status-colored dots at city zoom.
-    map.addSource('localities', { type: 'geojson', data: fc(L), cluster: true, clusterRadius: 46, clusterMaxZoom: 8 });
+    map.addSource('localities', { type: 'geojson', data: fc(L), cluster: true, clusterRadius: 46, clusterMaxZoom: 11 });
     map.addLayer({
       id: 'clusters', type: 'circle', source: 'localities', filter: ['has', 'point_count'],
       paint: {
