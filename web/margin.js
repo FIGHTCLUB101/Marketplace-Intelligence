@@ -45,7 +45,7 @@ function update(){
       <span class="verdict-badge ${vClass}">${v}</span>
       <div style="display:flex;gap:2rem;margin-top:.75rem;flex-wrap:wrap">
         <div><div class="stat-label">Net realization</div><div class="stat-val">₹${r.netRealization}</div></div>
-        <div><div class="stat-label">Net contribution / order</div><div class="stat-val" style="color:${r.isViable ? 'var(--status-success)' : 'var(--status-critical)'}">₹${r.netContribution}</div></div>
+        <div><div class="stat-label">Net contribution / order</div><div class="stat-val" style="color:${r.isViable ? 'var(--status-success-text)' : 'var(--status-critical-text)'}">₹${r.netContribution}</div></div>
         <div><div class="stat-label">Contribution %</div><div class="stat-val">${r.netContributionPercent}%</div></div>
       </div>
       <p class="info" style="margin-top:.75rem">Net realization = selling price × (1 − commission) − fulfilment. Contribution subtracts COGS, logistics (10%), returns (2.5%), ad/order. Thresholds: QCompass GO/CAUTION/STOP.</p>

@@ -118,7 +118,7 @@ export function showProfile(p) {
       ${row('GOAT on Blinkit', truthy(p.blinkit_goat_present) ? '<span style="color:var(--status-success)">Listed ✓</span>' : '<span style="color:var(--status-neutral)">Not yet</span>')}
       ${blAvg !== null ? row('Competitor avg price', '₹' + Math.round(blAvg), true) : ''}
       ${blAdv !== null ? row('GOAT price advantage', '<span style="color:var(--status-success)">+₹' + Math.round(blAdv) + ' cheaper</span>') : ''}
-      ${truthy(p.is_white_space) ? '<div class="pr"><span class="pill" style="background:var(--status-success-bg);color:var(--status-success);font-size:11px">White space — no competitors on BL or Zepto</span></div>' : ''}
+      ${truthy(p.is_white_space) ? '<div class="pr"><span class="pill" style="background:var(--status-success-bg);color:var(--status-success-text);font-size:11px">White space — no competitors on BL or Zepto</span></div>' : ''}
     </div>` : '';
 
   panel.innerHTML = `
