@@ -12,6 +12,11 @@ body{font-family:var(--sans);background:var(--paper);color:var(--ink);height:100
 .tab{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:none;border:none;padding:8px 12px;cursor:pointer;border-radius:6px}
 .tab:hover{color:var(--ink)}
 .tab.active{color:var(--ink);background:#F1EFE8}
+.tab-dropdown{position:relative}
+.dd-menu{display:none;position:absolute;top:calc(100% + 4px);right:0;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.08);padding:4px;min-width:170px;z-index:20}
+.dd-menu.open{display:flex}
+.dd-item{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:none;border:none;padding:8px 12px;cursor:pointer;border-radius:6px;text-align:left}
+.dd-item:hover{color:var(--ink);background:#F1EFE8}
 .view{flex:1;display:none;overflow:auto}
 .view.active{display:block}
 #map-view.active{display:flex;flex-direction:column;overflow:hidden}

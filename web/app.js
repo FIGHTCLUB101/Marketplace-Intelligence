@@ -81,9 +81,13 @@ document.addEventListener('DOMContentLoaded', () => {
   bsel.addEventListener('change', (e) => (e.target.value === 'all' ? applyFilter() : highlightBelt(e.target.value)));
 
   const rendered = {};
-  document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => {
-    const v = tab.dataset.view;
-    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
+  const ddToggle = document.getElementById('dd-toggle');
+  const ddMenu = document.getElementById('dd-menu');
+  const ddViews = new Set(['leaderboard', 'gems', 'margin']);
+
+  const switchView = (v) => {
+    document.querySelectorAll('.tab[data-view]').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
+    ddToggle.classList.toggle('active', ddViews.has(v));
     document.querySelectorAll('.view').forEach((s) => s.classList.toggle('active', s.id === v + '-view'));
     if (v === 'map') resizeMap();
     if (v === 'leaderboard' && !rendered.lb) { renderLeaderboard(); rendered.lb = 1; }
@@ -91,7 +95,24 @@ document.addEventListener('DOMContentLoaded', () => {
     if (v === 'sequence' && !rendered.seq) { renderSequence(); rendered.seq = 1; }
     if (v === 'margin' && !rendered.margin) { AppState.initMargin(); rendered.margin = 1; }
     if (v === 'shelf' && !rendered.shelf) { AppState.initShelfMonitor(); rendered.shelf = 1; }
+  };
+
+  document.querySelectorAll('.tab[data-view]').forEach((tab) => tab.addEventListener('click', () => switchView(tab.dataset.view)));
+
+  ddToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    ddMenu.classList.toggle('open');
+  });
+  document.querySelectorAll('.dd-item').forEach((item) => item.addEventListener('click', () => {
+    switchView(item.dataset.view);
+    ddMenu.classList.remove('open');
   }));
+  document.addEventListener('click', (e) => {
+    if (!ddMenu.contains(e.target) && e.target !== ddToggle) ddMenu.classList.remove('open');
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') ddMenu.classList.remove('open');
+  });
 
   setTimeout(applyFilter, 300);
 });

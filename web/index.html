@@ -15,10 +15,15 @@
     <div class="brand">◆ GOAT <span class="d">Life</span> · Where to Win</div>
     <nav class="tabs">
       <button class="tab active" data-view="map">Map</button>
-      <button class="tab" data-view="leaderboard">Leaderboard</button>
-      <button class="tab" data-view="gems">Untapped Markets</button>
+      <div class="tab-dropdown">
+        <button class="tab dd-toggle" id="dd-toggle">++</button>
+        <div class="dd-menu" id="dd-menu">
+          <button class="dd-item" data-view="leaderboard">Leaderboard</button>
+          <button class="dd-item" data-view="gems">Untapped Markets</button>
+          <button class="dd-item" data-view="margin">Margin Calculator</button>
+        </div>
+      </div>
       <button class="tab" data-view="sequence">Launch Roadmap</button>
-      <button class="tab" data-view="margin">Margin Calculator</button>
       <button class="tab" data-view="shelf">Shelf Monitor</button>
       <button class="tab" data-view="methodology">Method</button>
     </nav>
