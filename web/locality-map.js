@@ -115,10 +115,10 @@ export function showProfile(p) {
     <div class="p-sep"></div>
     <div class="p-section-head">Competitive position · Oats aisle</div>
     <div class="p-grid">
-      ${row('GOAT on Blinkit', truthy(p.blinkit_goat_present) ? '<span style="color:#059669">Listed ✓</span>' : '<span style="color:#888780">Not yet</span>')}
+      ${row('GOAT on Blinkit', truthy(p.blinkit_goat_present) ? '<span style="color:var(--status-success)">Listed ✓</span>' : '<span style="color:var(--status-neutral)">Not yet</span>')}
       ${blAvg !== null ? row('Competitor avg price', '₹' + Math.round(blAvg), true) : ''}
-      ${blAdv !== null ? row('GOAT price advantage', '<span style="color:#059669">+₹' + Math.round(blAdv) + ' cheaper</span>') : ''}
-      ${truthy(p.is_white_space) ? '<div class="pr"><span class="pill" style="background:#E6F4EE;color:#059669;font-size:11px">White space — no competitors on BL or Zepto</span></div>' : ''}
+      ${blAdv !== null ? row('GOAT price advantage', '<span style="color:var(--status-success)">+₹' + Math.round(blAdv) + ' cheaper</span>') : ''}
+      ${truthy(p.is_white_space) ? '<div class="pr"><span class="pill" style="background:var(--status-success-bg);color:var(--status-success);font-size:11px">White space — no competitors on BL or Zepto</span></div>' : ''}
     </div>` : '';
 
   panel.innerHTML = `

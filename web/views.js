@@ -2,10 +2,11 @@ import { colorFor, labelFor } from './contract.js';
 
 const L = window.LOCALITIES || [];
 
-const VERDICT_BG = { GO: '#E6F4EE', 'SAMPLE-FIRST': '#FAF0DF', WAIT: '#F0EFEA' };
-const VERDICT_FG = { GO: '#059669', 'SAMPLE-FIRST': '#B45309', WAIT: '#6B6B66' };
-const verdictBadge = (v) =>
-  `<span class="badge" style="background:${VERDICT_BG[v] || '#F0EFEA'};color:${VERDICT_FG[v] || '#6B6B66'}">${v}</span>`;
+const VERDICT_STATUS = { GO: 'success', 'SAMPLE-FIRST': 'warning', WAIT: 'neutral' };
+const verdictBadge = (v) => {
+  const status = VERDICT_STATUS[v] || 'neutral';
+  return `<span class="badge" style="background:var(--status-${status}-bg);color:var(--status-${status}-text)">${v}</span>`;
+};
 const gtmDot = (a) => `<span style="color:${colorFor(a)}">●</span> ${labelFor(a)}`;
 const inr = (n) => (n ? '₹' + Math.round(+n).toLocaleString('en-IN') : '—');
 
@@ -20,7 +21,7 @@ export function renderLeaderboard() {
     ${rows.map((l, i) => {
       const a = num(l.price_advantage_blinkit);
       const goatBL = l.blinkit_goat_present !== '' && l.blinkit_goat_present != null
-        ? (truthy(l.blinkit_goat_present) ? '<span style="color:#059669">✓</span>' : '<span style="color:#888780">—</span>')
+        ? (truthy(l.blinkit_goat_present) ? '<span style="color:var(--status-success)">✓</span>' : '<span style="color:var(--status-neutral)">—</span>')
         : '<span style="color:#ccc">n/a</span>';
       return `<tr>
         <td class="mono">${i + 1}</td><td>${l.AREA.split(',')[0].trim()}</td><td>${l.ADDRESS}</td>
@@ -28,7 +29,7 @@ export function renderLeaderboard() {
         <td>${l.serviceability_state}</td><td>${l.archetype_ml}</td>
         <td>${gtmDot(l.gtm_action)}</td>
         <td class="mono">${goatBL}</td>
-        <td class="mono">${a !== null ? '<span style="color:#059669">+₹' + Math.round(a) + '</span>' : '—'}</td></tr>`;
+        <td class="mono">${a !== null ? '<span style="color:var(--status-success)">+₹' + Math.round(a) + '</span>' : '—'}</td></tr>`;
     }).join('')}
     </tbody></table>`;
 }
@@ -57,7 +58,7 @@ export function renderGems() {
       <td class="mono">${Math.round(+l.icp_score)}</td>
       <td>${verdictBadge(l.icp_verdict)}</td>
       <td>${gtmDot(l.gtm_action)}</td>
-      <td>${t(l.blinkit_goat_present) ? '<span style="color:#059669">Listed ✓</span>' : '<span style="color:#888780">Not yet</span>'}</td>
+      <td>${t(l.blinkit_goat_present) ? '<span style="color:var(--status-success)">Listed ✓</span>' : '<span style="color:var(--status-neutral)">Not yet</span>'}</td>
     </tr>`).join('')}
     </tbody></table>` : '';
 
@@ -74,9 +75,9 @@ export function renderMethodology() {
     <p class="vd">Each locality carries an <b>ICP score</b> (demand attractiveness: affluence + corporate + youth + access + centrality) and a <b>serviceability state</b> (quick-commerce reach from the Blinkit / Zepto / Instamart darkstore sample). The two combine into a go-to-market <b>action</b>.</p>
     <h3 class="gh">Action matrix</h3>
     <table class="lb"><thead><tr><th></th><th>Confirmed / Likely</th><th>Unknown</th></tr></thead><tbody>
-      <tr><td class="mono">GO</td><td><span style="color:#059669">● Push now</span></td><td><span style="color:#2a78d6">● D2C / offline (verify QC)</span></td></tr>
-      <tr><td class="mono">SAMPLE-FIRST</td><td><span style="color:#d97706">● Sample + QC test</span></td><td><span style="color:#EF9F27">● Sample (D2C / offline)</span></td></tr>
-      <tr><td class="mono">WAIT</td><td><span style="color:#888780">● Hold</span></td><td><span style="color:#888780">● Hold</span></td></tr>
+      <tr><td class="mono">GO</td><td><span style="color:${colorFor('PUSH-NOW')}">● Push now</span></td><td><span style="color:${colorFor('D2C / OFFLINE - verify QC')}">● D2C / offline (verify QC)</span></td></tr>
+      <tr><td class="mono">SAMPLE-FIRST</td><td><span style="color:${colorFor('SAMPLE + QC test')}">● Sample + QC test</span></td><td><span style="color:${colorFor('SAMPLE (D2C / offline)')}">● Sample (D2C / offline)</span></td></tr>
+      <tr><td class="mono">WAIT</td><td><span style="color:${colorFor('HOLD')}">● Hold</span></td><td><span style="color:${colorFor('HOLD')}">● Hold</span></td></tr>
     </tbody></table>
     <h3 class="gh">Honesty notes</h3>
     <p class="vd">
