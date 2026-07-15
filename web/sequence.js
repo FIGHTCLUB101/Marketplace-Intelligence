@@ -78,15 +78,19 @@ function renderPlan(plan) {
     if (!wd) continue;
     html += `<h3 class="gh">${WAVE_LABELS[w]}</h3>
       <p class="k" style="margin-bottom:6px">${wd.affordable.length} funded of ${wd.candidates.length} · ${inr(wd.cost)} · avg ICP ${wd.avg}</p>
+      <div class="table-wrap">
       <table class="lb"><thead><tr><th>Locality</th><th>ICP</th><th>Archetype</th><th>Brands</th><th>Cost</th></tr></thead><tbody>
       ${wd.affordable.map((l) => `<tr><td>${l.AREA}</td><td class="mono">${Math.round(+l.icp_score)}</td><td>${l.archetype_ml}</td><td class="mono">${l.n_brands_confirmed}/3</td><td class="mono">${inr(l._cost)}</td></tr>`).join('')}
-      </tbody></table>`;
+      </tbody></table>
+      </div>`;
   }
   if (plan.watch.length) {
     html += `<h3 class="gh">Watch list · hidden & spillover gems <span class="k">(${plan.watch.length})</span></h3>
+      <div class="table-wrap">
       <table class="lb"><thead><tr><th>Locality</th><th>ICP</th><th>Action</th></tr></thead><tbody>
       ${plan.watch.slice(0, 10).map((l) => `<tr><td>${l.AREA}</td><td class="mono">${Math.round(+l.icp_score)}</td><td><span style="color:${colorFor(l.gtm_action)}">●</span> ${labelFor(l.gtm_action)}</td></tr>`).join('')}
-      </tbody></table>`;
+      </tbody></table>
+      </div>`;
   }
   return html;
 }
