@@ -19,6 +19,7 @@ assert set(df["gtm_action"].dropna().unique()) == set(contract.GTM_ACTIONS), "gt
 COLS = ["AREA", "ADDRESS", "PINCODE", "lat", "lng", "icp_score", "icp_verdict", "gtm_action",
         "serviceability_state", "serviceability_confidence", "archetype_ml", "lifecycle",
         "n_brands_confirmed", "brands_confirmed_list", "nearest_known_darkstore_km",
+        "nearest_blinkit_km", "nearest_zepto_km", "nearest_swiggy_km",
         "blinkit_confirmed", "swiggy_confirmed", "zepto_confirmed",
         "res_avg_buy_imputed", "price_is_imputed", "employer_quality", "primary_sector",
         "is_metro_connected", "belt_id", "belt_size", "pareto_optimal", "hidden_gem_v2", "spillover_gem",
@@ -37,7 +38,8 @@ geo = src[COLS].copy()
 geo["lat"] = src["lat_r"].to_numpy()
 geo["lng"] = src["lng_r"].to_numpy()
 geo["color"] = geo["gtm_action"].map(contract.GTM_COLORS).fillna(contract.GTM_DEFAULT_COLOR)
-for c in ["icp_score", "res_avg_buy_imputed", "nearest_known_darkstore_km", "employer_quality",
+for c in ["icp_score", "res_avg_buy_imputed", "nearest_known_darkstore_km",
+          "nearest_blinkit_km", "nearest_zepto_km", "nearest_swiggy_km", "employer_quality",
           "blinkit_competitor_avg_price", "zepto_competitor_avg_price", "price_advantage_blinkit"]:
     if c in geo.columns:
         geo[c] = geo[c].round(1)
