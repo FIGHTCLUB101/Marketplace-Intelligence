@@ -4,6 +4,9 @@ export const GTM_ACTIONS = [
   'PUSH-NOW', 'SAMPLE + QC test', 'SAMPLE (D2C / offline)', 'D2C / OFFLINE - verify QC', 'HOLD',
 ];
 
+// PUSH-NOW and HOLD intentionally match styles.css's --status-success/--status-neutral tokens
+// (see docs/superpowers/specs/2026-07-15-design-system-foundation-design.md) — not re-derived from
+// them, since this file is also read by Python-side tooling with no CSS access.
 export const GTM_COLORS = {
   'PUSH-NOW':                  '#059669',
   'SAMPLE + QC test':          '#d97706',

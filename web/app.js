@@ -34,7 +34,7 @@ function renderKpis() {
   const conf = mapped ? Math.round(100 * L.filter((l) => l.serviceability_state === 'Confirmed').length / mapped) : 0;
   document.getElementById('kpi-ribbon').innerHTML = `
     <div class="kpi"><div class="kn">1,001<span class="ks">${mapped} mapped</span></div><div class="kl">Localities analysed</div></div>
-    <div class="kpi"><div class="kn" style="color:#059669">${push}</div><div class="kl">Ready to launch · push-now</div></div>
+    <div class="kpi"><div class="kn" style="color:var(--status-success)">${push}</div><div class="kl">Ready to launch · push-now</div></div>
     <div class="kpi"><div class="kn">${gems}</div><div class="kl">Untapped markets</div></div>
     <div class="kpi"><div class="kn">${conf}%</div><div class="kl">Quick-commerce confirmed</div></div>`;
 }
@@ -56,6 +56,18 @@ function buildLedger() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  const themeToggle = document.getElementById('theme-toggle');
+  const applyTheme = (theme) => {
+    if (theme === 'dark') { document.documentElement.dataset.theme = 'dark'; themeToggle.textContent = 'Light'; }
+    else { delete document.documentElement.dataset.theme; themeToggle.textContent = 'Dark'; }
+  };
+  applyTheme(localStorage.getItem('theme') === 'dark' ? 'dark' : 'light');
+  themeToggle.addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    localStorage.setItem('theme', next);
+  });
+
   // city filter options
   const fc = document.getElementById('f-city');
   [...new Set(L.map((l) => l.ADDRESS))].sort().forEach((c) => {
