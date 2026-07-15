@@ -1,6 +1,6 @@
 import { colorFor, labelFor } from './contract.js';
 
-const L = window.LOCALITIES || [];
+const L = (typeof window !== 'undefined' && window.LOCALITIES) || [];
 L.forEach((l, i) => (l._idx = i));
 let map;
 const truthy = (v) => v === true || v === 'true' || v === 'True';
@@ -15,6 +15,27 @@ function fc(records) {
     })),
   };
 }
+
+// Builds a `points`-sided polygon approximating a geodesic circle of radiusKm around [lat,lng].
+// Ported from a reference darkstore-mapping project's makeGeoJSONCircle — same 111.32/110.574
+// km-per-degree approximation, adequate at the ~3.5km radii this is used for.
+function circlePolygon(lat, lng, radiusKm, color, points = 32) {
+  const coords = [];
+  const distanceX = radiusKm / (111.32 * Math.cos(lat * Math.PI / 180));
+  const distanceY = radiusKm / 110.574;
+  for (let i = 0; i < points; i++) {
+    const theta = (i / points) * (2 * Math.PI);
+    coords.push([lng + distanceX * Math.cos(theta), lat + distanceY * Math.sin(theta)]);
+  }
+  coords.push(coords[0]);
+  return {
+    type: 'Feature',
+    geometry: { type: 'Polygon', coordinates: [coords] },
+    properties: { color },
+  };
+}
+
+export { circlePolygon };
 
 // Filtering updates the SOURCE data (not a layer filter) so cluster counts recompute correctly.
 export function setLocalityData(records) {
