@@ -25,6 +25,7 @@ function applyFilter() {
   const samp = vis.filter((l) => l.gtm_action.startsWith('SAMPLE')).length;
   document.getElementById('map-stats').innerHTML =
     `<b>${vis.length}</b> localities · <b>${push}</b> push-now · <b>${samp}</b> sample`;
+  document.getElementById('map-empty').classList.toggle('show', vis.length === 0);
 }
 
 function renderKpis() {
@@ -96,6 +97,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('f-verdict').addEventListener('change', (e) => { sel.verdict = e.target.value; applyFilter(); });
   document.getElementById('f-svc').addEventListener('change', (e) => { sel.serviceability = e.target.value; applyFilter(); });
   bsel.addEventListener('change', (e) => (e.target.value === 'all' ? applyFilter() : highlightBelt(e.target.value)));
+  document.getElementById('map-empty-clear').addEventListener('click', () => {
+    sel.city = 'all'; sel.verdict = 'all'; sel.serviceability = 'all';
+    document.getElementById('f-city').value = 'all';
+    document.getElementById('f-verdict').value = 'all';
+    document.getElementById('f-svc').value = 'all';
+    applyFilter();
+  });
 
   const rendered = {};
   const ddToggle = document.getElementById('dd-toggle');

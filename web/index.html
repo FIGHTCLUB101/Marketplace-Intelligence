@@ -31,11 +31,11 @@
   </div>
 
   <section id="map-view" class="view active">
-    <div class="kpi-ribbon" id="kpi-ribbon"></div>
+    <div class="kpi-ribbon" id="kpi-ribbon"><div class="skeleton skeleton-kpi"></div></div>
     <div class="map-body">
     <aside class="ledger">
       <h4>Decision ledger</h4>
-      <div id="ledger"></div>
+      <div id="ledger"><div class="skeleton skeleton-ledger"></div></div>
       <div class="sep"></div>
       <h4>Filter</h4>
       <select id="f-city"><option value="all">All cities</option></select>
@@ -51,6 +51,10 @@
     </aside>
     <div class="map-wrap">
       <div id="map-container"></div>
+      <div id="map-empty" class="map-empty">
+        <p>No localities match these filters.</p>
+        <button id="map-empty-clear" type="button">Clear filters</button>
+      </div>
       <div id="map-stats"></div>
       <div id="profile"></div>
     </div>
