@@ -94,30 +94,6 @@ async function fetchJson(url) {
   return res.json();
 }
 
-function alertRow(cls, html) {
-  return `<div class="alert-row ${cls}">${html}</div>`;
-}
-
-function renderChangeRows(changes) {
-  const rows = [];
-  changes.goat_displaced.forEach((e) => rows.push(alertRow('critical',
-    `<strong>${e.was}</strong> displaced in ${e.city} (${e.locality}) — ${e.now}`)));
-  changes.goat_gone.forEach((e) => rows.push(alertRow('critical',
-    `<strong>${e.product}</strong> no longer listed in ${e.city} (${e.locality}) — last seen rank ${e.rank}`)));
-  changes.rank_intrusions.forEach((e) => rows.push(alertRow('warning',
-    `<strong>${e.intruder}</strong> intruded at rank ${e.rank} in ${e.city} (${e.locality})`)));
-  changes.price_changes.forEach((e) => {
-    const dir = e.change < 0 ? '▼' : '▲';
-    rows.push(alertRow('warning',
-      `<strong>${e.product}</strong> ${dir}₹${Math.abs(e.change).toFixed(0)} in ${e.city} (₹${e.old_price} → ₹${e.new_price})`));
-  });
-  changes.new_products.forEach((e) => rows.push(alertRow('info',
-    `<strong>${e.product}</strong> appeared at rank ${e.rank} in ${e.city} (${e.locality})`)));
-  changes.gone_products.filter((e) => !e.is_goat).forEach((e) => rows.push(alertRow('info',
-    `<strong>${e.product}</strong> no longer listed in ${e.city} (${e.locality})`)));
-  return rows.length ? rows.join('') : '<p class="info">No changes detected this week.</p>';
-}
-
 function renderConquestBreadth(breadth) {
   if (!breadth.length) return '';
   const rows = breadth.map((b) =>
@@ -136,35 +112,125 @@ function renderTrendsTable(trends) {
   return `<table class="lb">${head}${body}</table>`;
 }
 
-async function render() {
-  const el = document.getElementById('shelf-monitor');
+function cityLocalityIndex(groups) {
+  const byCity = new Map();
+  groups.forEach((g) => g.entries.forEach((e) => {
+    if (!byCity.has(e.city)) byCity.set(e.city, new Set());
+    byCity.get(e.city).add(e.locality);
+  }));
+  return byCity;
+}
+
+function groupCard(g) {
+  const collapsed = g.entries.length > 5;
+  const entriesHtml = g.entries.map((e) =>
+    `<div class="group-entry">${e.city} (${e.locality}) — ${e.detail}</div>`
+  ).join('');
+  return `
+    <div class="alert-row ${g.severity} group-card" data-key="${g.key}">
+      <div class="group-head">
+        <strong>${g.product}</strong> ${g.label}
+        <span class="group-count">in ${g.entries.length} localit${g.entries.length === 1 ? 'y' : 'ies'}</span>
+        ${collapsed ? '<button type="button" class="group-toggle">Show</button>' : ''}
+      </div>
+      <div class="group-entries" ${collapsed ? 'style="display:none"' : ''}>${entriesHtml}</div>
+    </div>`;
+}
+
+function renderGroupedChanges(groups, cityFilter, localityFilter) {
+  const filtered = groups
+    .map((g) => ({
+      ...g,
+      entries: g.entries.filter((e) =>
+        (cityFilter === 'all' || e.city === cityFilter) &&
+        (localityFilter === 'all' || e.locality === localityFilter)),
+    }))
+    .filter((g) => g.entries.length > 0);
+  if (!filtered.length) return '<p class="info">No changes match this filter.</p>';
+  return filtered.map(groupCard).join('');
+}
+
+function wireGroupToggles(container) {
+  container.querySelectorAll('.group-toggle').forEach((btn) => btn.addEventListener('click', () => {
+    const entries = btn.closest('.group-card').querySelector('.group-entries');
+    const open = entries.style.display !== 'none';
+    entries.style.display = open ? 'none' : 'block';
+    btn.textContent = open ? 'Show' : 'Hide';
+  }));
+}
+
+function fillLocalityOptions(select, byCity, city) {
+  const localities = city === 'all'
+    ? [...new Set([...byCity.values()].flatMap((s) => [...s]))]
+    : [...(byCity.get(city) || [])];
+  select.innerHTML = '<option value="all">All localities</option>' +
+    localities.sort().map((l) => `<option>${l}</option>`).join('');
+}
+
+async function renderThisWeek(el) {
   el.innerHTML = '<p class="info">Loading…</p>';
   try {
     const [changes, trends] = await Promise.all([
-      fetchJson('/api/shelf/changes'),
-      fetchJson('/api/shelf/trends'),
+      fetchJson('/api/shelf/changes?platform=blinkit_goatlife'),
+      fetchJson('/api/shelf/trends?platform=blinkit_goatlife'),
     ]);
     if (changes.status === 'insufficient_history') {
-      el.innerHTML = `<h2 class="vt">Shelf Monitor</h2><p class="info">${changes.narrative[0]}</p>`;
+      el.innerHTML = `<p class="info">${changes.narrative[0]}</p>`;
       return;
     }
     const sev = severityFor(changes);
+    const groups = groupChangesByProduct(changes);
+    const byCity = cityLocalityIndex(groups);
     el.innerHTML = `
-      <h2 class="vt">Shelf Monitor</h2>
       <p class="vd">Week-over-week changes to GOAT Life's Blinkit brand-search shelf, comparing run ${changes.old_run_id} → ${changes.new_run_id}.</p>
       <div class="severity-banner ${sev}">${SEVERITY_LABEL[sev]}</div>
       <div class="stat-label">Brand Defence Rate</div>
       <div class="stat-val">${formatBrandDefenceRate(changes.brand_defence_rate)}</div>
       <div class="narrative">${changes.narrative.join('<br>')}</div>
-      ${renderChangeRows(changes)}
+      <div class="filter-row">
+        <div class="field"><label>City</label><select class="f-tw-city"><option value="all">All cities</option>${[...byCity.keys()].sort().map((c) => `<option>${c}</option>`).join('')}</select></div>
+        <div class="field"><label>Locality</label><select class="f-tw-locality"></select></div>
+      </div>
+      <div class="group-list"></div>
       ${renderConquestBreadth(changes.conquest_breadth)}
       <h3 class="gh">Observed Digital Shelf Position</h3>
       <p class="info">We observe the output of Blinkit's ranking algorithm, not its inputs — this is rank as it actually appeared, tracked week over week.</p>
       ${renderTrendsTable(trends)}`;
+
+    const citySel = el.querySelector('.f-tw-city');
+    const localitySel = el.querySelector('.f-tw-locality');
+    const groupList = el.querySelector('.group-list');
+    const rerenderGroups = () => {
+      groupList.innerHTML = renderGroupedChanges(groups, citySel.value, localitySel.value);
+      wireGroupToggles(groupList);
+    };
+    fillLocalityOptions(localitySel, byCity, 'all');
+    citySel.addEventListener('change', () => { fillLocalityOptions(localitySel, byCity, citySel.value); rerenderGroups(); });
+    localitySel.addEventListener('change', rerenderGroups);
+    rerenderGroups();
   } catch (e) {
-    console.error('shelf-monitor render failed', e);
-    el.innerHTML = '<h2 class="vt">Shelf Monitor</h2><p class="info">Failed to load — check the API is running.</p>';
+    console.error('shelf-monitor This Week render failed', e);
+    el.innerHTML = '<p class="info">Failed to load — check the API is running.</p>';
   }
+}
+
+const SUBTABS = [
+  { id: 'this-week', label: 'This Week', render: renderThisWeek },
+];
+
+async function render() {
+  const el = document.getElementById('shelf-monitor');
+  el.innerHTML = `
+    <h2 class="vt">Shelf Monitor</h2>
+    <div class="subtabs">${SUBTABS.map((t, i) => `<button type="button" class="subtab${i === 0 ? ' active' : ''}" data-subtab="${t.id}">${t.label}</button>`).join('')}</div>
+    <div class="subtab-body"></div>`;
+  const body = el.querySelector('.subtab-body');
+  const activate = (id) => {
+    el.querySelectorAll('.subtab').forEach((b) => b.classList.toggle('active', b.dataset.subtab === id));
+    SUBTABS.find((t) => t.id === id).render(body);
+  };
+  el.querySelectorAll('.subtab').forEach((b) => b.addEventListener('click', () => activate(b.dataset.subtab)));
+  activate(SUBTABS[0].id);
 }
 
 AppState.initShelfMonitor = render;
