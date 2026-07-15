@@ -25,7 +25,7 @@ export function getVerdict({grossMarginPercent, netRealization, monthlyAdBudget}
   return 'CAUTION';
 }
 
-const COLOR = { GO:'#059669', CAUTION:'#d97706', STOP:'#991B1B' };
+const VERDICT_CLASS = { GO: 'go', CAUTION: 'caution', STOP: 'stop' };
 
 function field(label,id,val){
   return `<div class="field"><label for="${id}">${label}</label>
@@ -39,12 +39,13 @@ function update(){
     commissionRate:num('m-comm')/100, fulfilmentFee:num('m-ful'),
     monthlyAdBudget:num('m-ad'), monthlyOrders:num('m-ord') });
   const v = getVerdict({ grossMarginPercent:gm, netRealization:r.netRealization, monthlyAdBudget:num('m-ad') });
+  const vClass = VERDICT_CLASS[v];
   document.getElementById('m-out').innerHTML = `
-    <div style="border:2px solid ${COLOR[v]};border-radius:var(--radius);padding:1rem;background:rgba(255,255,255,.02)">
-      <span class="verdict-badge" style="background:${COLOR[v]};color:#fff">${v}</span>
+    <div class="margin-verdict ${vClass}">
+      <span class="verdict-badge ${vClass}">${v}</span>
       <div style="display:flex;gap:2rem;margin-top:.75rem;flex-wrap:wrap">
         <div><div class="stat-label">Net realization</div><div class="stat-val">₹${r.netRealization}</div></div>
-        <div><div class="stat-label">Net contribution / order</div><div class="stat-val" style="color:${r.isViable?'var(--go)':'#f87171'}">₹${r.netContribution}</div></div>
+        <div><div class="stat-label">Net contribution / order</div><div class="stat-val" style="color:${r.isViable ? 'var(--status-success)' : 'var(--status-critical)'}">₹${r.netContribution}</div></div>
         <div><div class="stat-label">Contribution %</div><div class="stat-val">${r.netContributionPercent}%</div></div>
       </div>
       <p class="info" style="margin-top:.75rem">Net realization = selling price × (1 − commission) − fulfilment. Contribution subtracts COGS, logistics (10%), returns (2.5%), ad/order. Thresholds: QCompass GO/CAUTION/STOP.</p>
