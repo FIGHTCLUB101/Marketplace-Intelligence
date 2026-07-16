@@ -33,6 +33,7 @@ body{font-family:var(--sans);background:var(--paper);color:var(--ink);height:100
 #map-view.active{display:flex;flex-direction:column;overflow:hidden}
 .map-body{flex:1;display:grid;grid-template-columns:160px 1fr;overflow:hidden;min-height:0}
 .kpi-ribbon{display:flex;background:var(--surface);border-bottom:1px solid var(--line);flex-shrink:0}
+#methodology-view .kpi-ribbon{border:1px solid var(--line);border-radius:var(--radius);margin-bottom:20px;flex-wrap:wrap}
 .kpi{padding:11px 22px;border-right:1px solid var(--line)}
 .kpi.primary{padding:14px 26px;border-left:3px solid var(--goat)}
 .kpi.primary .kn{font-size:34px}
