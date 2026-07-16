@@ -1,6 +1,6 @@
 # Locality Coverage Ring + Per-Brand Distance Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** When a user clicks a locality on the Map view, show a dashed coverage ring (colored by serviceability confidence) around it and a per-brand nearest-darkstore-distance breakdown in the profile panel — both built from data GOAT Life's pipeline already computes but never surfaced.
 
@@ -26,7 +26,7 @@
 **Interfaces:**
 - Produces: three new fields on every record in `window.LOCALITIES` — `nearest_blinkit_km`, `nearest_zepto_km`, `nearest_swiggy_km` (float or `""` if null, matching the existing `nearest_known_darkstore_km` null-as-empty-string convention already used by this script's `geo.fillna("")` step). Consumed by Task 3.
 
-- [ ] **Step 1: Add the three columns to the field allowlist**
+- [x] **Step 1: Add the three columns to the field allowlist**
 
 In `scripts/build_locality_data.py`, change:
 ```python
@@ -56,7 +56,7 @@ COLS = ["AREA", "ADDRESS", "PINCODE", "lat", "lng", "icp_score", "icp_verdict", 
         "price_advantage_blinkit", "is_white_space"]
 ```
 
-- [ ] **Step 2: Round the three new numeric columns**
+- [x] **Step 2: Round the three new numeric columns**
 
 In `scripts/build_locality_data.py`, change:
 ```python
@@ -74,7 +74,7 @@ for c in ["icp_score", "res_avg_buy_imputed", "nearest_known_darkstore_km",
         geo[c] = geo[c].round(1)
 ```
 
-- [ ] **Step 3: Regenerate the data file and verify**
+- [x] **Step 3: Regenerate the data file and verify**
 
 Run: `cd scripts && python build_locality_data.py`
 Expected: prints `localities (geocoded): 1001 | belts(>=3): <N>` (same locality count as before this change — this script only adds fields to existing records, it doesn't change which rows are kept). Then verify the new fields landed:
@@ -92,12 +92,12 @@ for r in sample:
 ```
 Expected: prints 3 sample records with non-empty `nearest_blinkit_km` values, confirming the new fields are present and populated in the regenerated `web/data-localities.js`.
 
-- [ ] **Step 4: Run the existing contract test to confirm nothing broke**
+- [x] **Step 4: Run the existing contract test to confirm nothing broke**
 
 Run: `cd scripts && python -m pytest test_build_locality_data.py::test_contract_js_matches_py -v`
 Expected: PASS (this test checks `contract.js`/`contract.py` GTM color/label parity, unrelated to the fields added here — it should be unaffected, and passing confirms the script still runs cleanly end-to-end).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/build_locality_data.py web/data-localities.js
@@ -120,7 +120,7 @@ distance breakdown in the locality profile panel."
 **Interfaces:**
 - Produces: `circlePolygon(lat, lng, radiusKm, color, points = 32) -> GeoJSON Feature<Polygon>` (pure, exported, tested). Consumed by Task 3.
 
-- [ ] **Step 1: Fix the Node-import guard (prerequisite for testing this file at all)**
+- [x] **Step 1: Fix the Node-import guard (prerequisite for testing this file at all)**
 
 `web/locality-map.js` currently throws `ReferenceError: window is not defined` when imported outside a browser, because line 3 reads `window.LOCALITIES` unguarded. `web/sequence.js` already solves this with a guarded pattern — apply the same fix here so this file's pure functions can be unit-tested.
 
@@ -133,7 +133,7 @@ to:
 const L = (typeof window !== 'undefined' && window.LOCALITIES) || [];
 ```
 
-- [ ] **Step 2: Write the failing tests for `circlePolygon`**
+- [x] **Step 2: Write the failing tests for `circlePolygon`**
 
 Create `web/tests/locality-map.test.js`:
 ```js
@@ -161,12 +161,12 @@ test('circlePolygon: respects a custom points count', () => {
 });
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `node --test web/tests/locality-map.test.js`
 Expected: FAIL — `circlePolygon is not a function` (or similar export-not-found error).
 
-- [ ] **Step 4: Implement `circlePolygon`**
+- [x] **Step 4: Implement `circlePolygon`**
 
 In `web/locality-map.js`, add this function after `fc()` (around line 17-18), before `export function setLocalityData`:
 ```js
@@ -200,17 +200,17 @@ export { circlePolygon };
 export function setLocalityData(records) {
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `node --test web/tests/locality-map.test.js`
 Expected: PASS (3/3).
 
-- [ ] **Step 6: Run the full frontend suite to confirm the guard fix didn't break anything**
+- [x] **Step 6: Run the full frontend suite to confirm the guard fix didn't break anything**
 
 Run: `node --test web/tests/frontend.test.js web/tests/sequence.test.js web/tests/margin.test.js web/tests/shelf-monitor.test.js web/tests/sortable-table.test.js web/tests/locality-map.test.js`
 Expected: all pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add web/locality-map.js web/tests/locality-map.test.js
@@ -232,7 +232,7 @@ the same typeof-guard so this file's pure functions can be unit-tested."
 - Consumes: `circlePolygon(lat, lng, radiusKm, color, points)` (Task 2, same file). `nearest_blinkit_km`/`nearest_zepto_km`/`nearest_swiggy_km` fields on locality records (Task 1).
 - Produces: `hideProfile()` (exported) — later referenced by the panel's close button via `window.__hideLocalityProfile`.
 
-- [ ] **Step 1: Add the ring color map and radius constant**
+- [x] **Step 1: Add the ring color map and radius constant**
 
 In `web/locality-map.js`, add near the top of the file, after the `truthy` helper (around line 6):
 ```js
@@ -240,7 +240,7 @@ const RING_COLOR = { Confirmed: '#059669', Likely: '#d97706', Unknown: '#6B6B66'
 const RING_RADIUS_KM = 3.5;
 ```
 
-- [ ] **Step 2: Add the coverage-ring source and layer**
+- [x] **Step 2: Add the coverage-ring source and layer**
 
 In `web/locality-map.js`, inside `initMap()`'s `map.on('load', ...)` handler, add this immediately after the `locality-circles` layer's `map.addLayer({...})` call (after the block ending at the line before `map.on('click', 'clusters', ...)`):
 ```js
@@ -251,7 +251,7 @@ In `web/locality-map.js`, inside `initMap()`'s `map.on('load', ...)` handler, ad
     });
 ```
 
-- [ ] **Step 3: Add `hideProfile()` and wire the window bridge**
+- [x] **Step 3: Add `hideProfile()` and wire the window bridge**
 
 In `web/locality-map.js`, replace:
 ```js
@@ -269,7 +269,7 @@ window.__hideLocalityProfile = hideProfile;
 export function showProfile(p) {
 ```
 
-- [ ] **Step 4: Change the panel's close button to use the new handler**
+- [x] **Step 4: Change the panel's close button to use the new handler**
 
 In `web/locality-map.js`, inside `showProfile()`'s template, change:
 ```js
@@ -280,7 +280,7 @@ to:
       <button class="p-x" onclick="window.__hideLocalityProfile()">×</button>
 ```
 
-- [ ] **Step 5: Add the "Nearest by brand" section**
+- [x] **Step 5: Add the "Nearest by brand" section**
 
 In `web/locality-map.js`, inside `showProfile()`, change:
 ```js
@@ -314,7 +314,7 @@ to:
     <div class="pills">
 ```
 
-- [ ] **Step 6: Set the ring's data when a locality is selected**
+- [x] **Step 6: Set the ring's data when a locality is selected**
 
 In `web/locality-map.js`, inside `showProfile()`, change:
 ```js
@@ -333,11 +333,11 @@ to:
 }
 ```
 
-- [ ] **Step 7: Visually verify**
+- [x] **Step 7: Visually verify**
 
 Using a local dev server (with `web/data-localities.js` regenerated from Task 1), open the Map view. Click a `Confirmed` locality (most localities — 792 of 1001) and confirm: the existing profile panel opens as before, a new "Nearest by brand" section appears between the main grid and "Competitive position" showing Blinkit/Zepto/Swiggy Instamart distances (or `—`), and a dashed green ring appears around the clicked locality on the map. Click a different locality while one is selected and confirm the ring moves to the new one rather than leaving two rings. Find and click a `Likely` locality (19 exist) and confirm an amber ring; find an `Unknown` locality (190 exist) and confirm a gray ring. Click the panel's `×` button and confirm both the panel and the ring disappear. Repeat the full check in dark mode.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add web/locality-map.js
@@ -350,18 +350,18 @@ git commit -m "feat: show a serviceability-colored coverage ring and per-brand d
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Run the full test suite**
+- [x] **Step 1: Run the full test suite**
 
 Run: `node --test web/tests/frontend.test.js web/tests/sequence.test.js web/tests/margin.test.js web/tests/shelf-monitor.test.js web/tests/sortable-table.test.js web/tests/locality-map.test.js`
 Expected: all pass.
 Run: `cd scripts && python -m pytest test_build_locality_data.py::test_contract_js_matches_py -v`
 Expected: PASS.
 
-- [ ] **Step 2: Manual end-to-end walkthrough, light and dark**
+- [x] **Step 2: Manual end-to-end walkthrough, light and dark**
 
 With a local dev server: click through several localities of each `serviceability_state` (Confirmed/Likely/Unknown) confirming ring color and per-brand distances are consistent with what the profile panel already shows for "Serviceability" and "Nearest store"; use the Map view's existing filters (city/verdict/serviceability, belt selector) to confirm they still work and that selecting a filtered-out locality's ring behaves sensibly (it shouldn't be selectable if filtered out — confirm no dangling ring appears for a hidden locality); click through every other view (Leaderboard, Untapped Markets, Launch Roadmap, Margin Calculator, Shelf Monitor, Method) to confirm no regression and no console errors from the Task 1-3 changes. Repeat the whole pass in dark mode.
 
-- [ ] **Step 3: Commit (only if fixes were needed)**
+- [x] **Step 3: Commit (only if fixes were needed)**
 
 If the walkthrough surfaced any bugs, fix them, re-run the affected step, then:
 ```bash
