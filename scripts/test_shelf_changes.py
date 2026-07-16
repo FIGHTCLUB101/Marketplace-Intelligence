@@ -3,6 +3,7 @@ from shelf_changes import (
     detect_changes,
     generate_narrative_summary,
     goat_gone_unique,
+    normalize_product_identity,
     not_serviceable_localities,
 )
 
@@ -15,7 +16,9 @@ def _row(city, locality, name, rank, price, is_goat=False):
 def test_build_shelf_snapshot_keys_by_identity_not_position():
     rows = [_row("Mumbai", "Bandra", "GOAT Life Mocha Marvel", 1, 119.0, is_goat=True)]
     snap = build_shelf_snapshot(rows)
-    assert snap[("Mumbai", "Bandra", "GOAT Life Mocha Marvel")] == {"rank": 1, "price": 119.0}
+    assert snap[("Mumbai", "Bandra", "GOAT Life Mocha Marvel")] == {
+        "rank": 1, "price": 119.0, "display_name": "GOAT Life Mocha Marvel",
+    }
 
 
 def test_build_shelf_snapshot_skips_null_rank_rows():
@@ -178,3 +181,69 @@ def test_narrative_gives_lead_sentence_to_rank_5_plus_goat_sku_that_vanished():
     result = generate_narrative_summary(changes)
     assert "Choco Hazelnut" in result[0]
     assert "disappeared" in result[0]
+
+
+def test_normalize_product_identity_strips_pack_of_suffix():
+    # Confirmed real-world case (2026-07-13 production data): Blinkit's own
+    # listing for the exact same physical SKU sometimes carries a
+    # "- Pack of N" suffix and sometimes doesn't, between scrapes.
+    assert normalize_product_identity(
+        "GOAT Life High Protein Overnight Instant Oats Choco-Nut Crunch - Pack of 2"
+    ) == "GOAT Life High Protein Overnight Instant Oats Choco-Nut Crunch"
+
+
+def test_normalize_product_identity_strips_combo_suffix():
+    assert normalize_product_identity("Prustlr Discovery Protein Oats - Combo") == "Prustlr Discovery Protein Oats"
+    assert normalize_product_identity("Prustlr Discovery Protein Oats - Combo of 3") == "Prustlr Discovery Protein Oats"
+
+
+def test_normalize_product_identity_is_a_no_op_for_plain_names():
+    assert normalize_product_identity("GOAT Life Mocha Marvel") == "GOAT Life Mocha Marvel"
+    assert normalize_product_identity("Not Serviceable") == "Not Serviceable"
+
+
+def test_build_shelf_snapshot_keys_by_normalized_identity_and_keeps_display_name():
+    rows = [_row("Mumbai", "Bandra", "GOAT Life Choco-Nut Crunch - Pack of 2", 2, 199.0, is_goat=True)]
+    snap = build_shelf_snapshot(rows)
+    assert snap[("Mumbai", "Bandra", "GOAT Life Choco-Nut Crunch")] == {
+        "rank": 2, "price": 199.0, "display_name": "GOAT Life Choco-Nut Crunch - Pack of 2",
+    }
+
+
+def test_detect_changes_treats_pack_size_suffix_as_same_product_not_gone_and_new():
+    # This is the exact false-positive pattern found in real 2026-07-13
+    # production data: the SAME product gets a "- Pack of 2" suffix added
+    # between scrapes. Must be recognized as one product whose rank/price
+    # may have changed, not a "gone" + "new" pair.
+    rows_old = [_row("Mumbai", "Bandra", "GOAT Life Choco-Nut Crunch", 2, 199.0, is_goat=True)]
+    rows_new = [_row("Mumbai", "Bandra", "GOAT Life Choco-Nut Crunch - Pack of 2", 2, 199.0, is_goat=True)]
+    changes = detect_changes(rows_new, rows_old)
+    assert changes["new_products"] == []
+    assert changes["gone_products"] == []
+    assert changes["goat_displaced"] == []
+
+
+def test_price_change_does_not_fire_when_pack_size_suffix_changed():
+    # Confirmed real 2026-07-13 production artifact: comparing a single-pack
+    # listing's price to the same product's "- Pack of 2" listing price
+    # produced a spurious ~496-locality "price change" spike -- a pack-of-2
+    # naturally costs more than one pack, so that's not a real per-unit
+    # price movement. Only compare prices when the raw listing name (pack
+    # size included) is actually unchanged between weeks.
+    rows_old = [_row("Mumbai", "Bandra", "GOAT Life Choco-Nut Crunch", 2, 119.0, is_goat=True)]
+    rows_new = [_row("Mumbai", "Bandra", "GOAT Life Choco-Nut Crunch - Pack of 2", 2, 189.0, is_goat=True)]
+    changes = detect_changes(rows_new, rows_old)
+    assert changes["price_changes"] == []
+
+
+def test_detect_changes_displays_the_new_raw_name_when_rank_actually_changes():
+    # Same product-identity-despite-suffix-change case, but this time the
+    # rank also genuinely moved -- the display name shown to a human should
+    # be the current (new) raw scraped name, not the normalized identity.
+    rows_old = [_row("Mumbai", "Bandra", "Prustlr Discovery Protein Oats", 5, 449.0)]
+    rows_new = [_row("Mumbai", "Bandra", "Prustlr Discovery Protein Oats - Pack of 2", 3, 449.0)]
+    changes = detect_changes(rows_new, rows_old)
+    assert len(changes["rank_moved"]) == 1
+    assert changes["rank_moved"][0]["product"] == "Prustlr Discovery Protein Oats - Pack of 2"
+    assert changes["rank_moved"][0]["old_rank"] == 5
+    assert changes["rank_moved"][0]["new_rank"] == 3

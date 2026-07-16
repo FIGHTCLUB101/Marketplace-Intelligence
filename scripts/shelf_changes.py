@@ -12,23 +12,44 @@ features of the original) are deferred to Sprint 5 — there is currently
 only one scrape_run per platform in the database, so there is no history to
 weight yet.
 """
+import re
 
 PLACEHOLDER_NAMES = ("N/A", "Not Available", "Location Error")
+
+# Confirmed real-world case (2026-07-13 production data, run 7 vs run 168):
+# Blinkit's own listing for the exact same physical SKU sometimes carries a
+# "- Pack of N" or "- Combo [of N]" suffix and sometimes doesn't, between
+# scrapes -- with no suffix normalization, ~half of all "gone"/"new"/
+# "displaced" events on real data were this single false-positive pattern.
+_VARIANT_SUFFIX_RE = re.compile(r"\s*-\s*(pack of \d+|combo(?:\s+of\s+\d+)?)\s*$", re.IGNORECASE)
+
+
+def normalize_product_identity(name):
+    """Strips known pack-size/bundle-variant suffixes so the same physical
+    product scraped with a different suffix on different weeks is still
+    recognized as the same product for identity matching. Matching-key use
+    only — the raw scraped name is preserved separately as "display_name"
+    for anything shown to a human."""
+    return _VARIANT_SUFFIX_RE.sub("", name).strip()
 
 
 def build_shelf_snapshot(rows):
     """rows: list of dicts with city_raw, locality_raw, product_name, rank,
     selling_price (shelf_snapshots columns). Returns
-    {(city, locality, product_name): {"rank": int, "price": float | None}}.
-    Rows with rank=None (Not Serviceable / Location Error placeholders) are
-    skipped — matches the original's numeric-rank-only filter."""
+    {(city, locality, normalized_product_identity): {"rank": int,
+    "price": float | None, "display_name": str}}. display_name is the raw
+    scraped product_name, preserved for display even though the key is
+    normalized. Rows with rank=None (Not Serviceable / Location Error
+    placeholders) are skipped — matches the original's numeric-rank-only
+    filter."""
     snap = {}
     for r in rows:
         if r["rank"] is None:
             continue
-        key = (r["city_raw"], r["locality_raw"], r["product_name"])
+        identity = normalize_product_identity(r["product_name"])
+        key = (r["city_raw"], r["locality_raw"], identity)
         price = float(r["selling_price"]) if r["selling_price"] is not None else None
-        snap[key] = {"rank": r["rank"], "price": price}
+        snap[key] = {"rank": r["rank"], "price": price, "display_name": r["product_name"]}
     return snap
 
 
@@ -41,7 +62,8 @@ def _is_goat_lookup(rows_new, rows_old):
     lookup = {}
     for r in rows_new + rows_old:
         if r["rank"] is not None:
-            lookup[(r["city_raw"], r["locality_raw"], r["product_name"])] = r["is_goat"]
+            identity = normalize_product_identity(r["product_name"])
+            lookup[(r["city_raw"], r["locality_raw"], identity)] = r["is_goat"]
     return lookup
 
 
@@ -68,17 +90,23 @@ def detect_changes(rows_new, rows_old, drop_calendar=None, price_threshold_inr=2
         old_price = old_entry["price"] if old_entry else None
         is_goat = is_goat_of.get(key, False)
         is_placeholder = name in PLACEHOLDER_NAMES
+        # Display names: prefer the current (new) raw scraped name when
+        # present, falling back to the old one -- "name" (the dict key) is
+        # the normalized identity and must never be shown to a human.
+        new_display = new_entry["display_name"] if new_entry else None
+        old_display = old_entry["display_name"] if old_entry else None
+        current_display = new_display or old_display
 
         if new_entry and not old_entry and not is_placeholder:
-            new_products.append({"city": city, "locality": locality, "rank": new_rank, "product": name})
+            new_products.append({"city": city, "locality": locality, "rank": new_rank, "product": new_display})
 
         if old_entry and not new_entry and not is_placeholder:
             if not (is_goat and name in drop_calendar):
                 gone_products.append({"city": city, "locality": locality, "rank": old_rank,
-                                       "product": name, "is_goat": is_goat})
+                                       "product": old_display, "is_goat": is_goat})
 
         if new_entry and old_entry and new_rank != old_rank and not is_placeholder:
-            rank_moved.append({"city": city, "locality": locality, "product": name,
+            rank_moved.append({"city": city, "locality": locality, "product": current_display,
                                 "old_rank": old_rank, "new_rank": new_rank, "is_goat": is_goat})
 
         if not is_placeholder and is_goat and old_entry and old_rank in (1, 2, 3, 4):
@@ -86,21 +114,26 @@ def detect_changes(rows_new, rows_old, drop_calendar=None, price_threshold_inr=2
                 if name not in drop_calendar:
                     now_label = f"Still listed, now rank {new_rank}" if new_entry else "MISSING"
                     goat_displaced.append({"city": city, "locality": locality, "rank": old_rank,
-                                            "was": name, "now": now_label})
+                                            "was": old_display, "now": now_label})
 
         if not is_placeholder and is_goat and new_entry and new_rank in (1, 2, 3, 4):
             if not old_entry or old_rank not in (1, 2, 3, 4):
-                goat_recovered.append({"city": city, "locality": locality, "rank": new_rank, "product": name})
+                goat_recovered.append({"city": city, "locality": locality, "rank": new_rank, "product": new_display})
 
         if not is_placeholder and not is_goat and new_entry and new_rank in (1, 2, 3, 4):
             if not old_entry or old_rank not in (1, 2, 3, 4):
-                rank_intrusions.append({"city": city, "locality": locality, "rank": new_rank, "intruder": name})
+                rank_intrusions.append({"city": city, "locality": locality, "rank": new_rank, "intruder": new_display})
 
-        if new_price and old_price and not is_placeholder:
+        # Only compare prices when the raw listing name (pack size included)
+        # is actually unchanged -- comparing a single-pack price to the same
+        # product's "- Pack of N" price is comparing different quantities,
+        # not a real per-unit price movement (confirmed real 2026-07-13
+        # production artifact: this produced a spurious ~496-locality spike).
+        if new_price and old_price and not is_placeholder and new_display == old_display:
             change_abs = abs(new_price - old_price)
             change_pct = (change_abs / old_price * 100) if old_price else 0
             if change_abs >= price_threshold_inr or change_pct >= price_threshold_pct:
-                price_changes.append({"city": city, "locality": locality, "product": name,
+                price_changes.append({"city": city, "locality": locality, "product": current_display,
                                        "old_price": old_price, "new_price": new_price,
                                        "change": new_price - old_price})
 
