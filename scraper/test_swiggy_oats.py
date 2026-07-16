@@ -1,4 +1,4 @@
-from swiggy_oats import parse_card_block
+from swiggy_oats import is_oats_product, parse_card_block
 
 
 def test_parse_card_block_extracts_name_price_and_pack_size():
@@ -28,3 +28,12 @@ def test_parse_card_block_filters_noise_lines():
 
 def test_parse_card_block_returns_empty_for_no_product_lines():
     assert parse_card_block("15 MINS\nADD") == []
+
+
+def test_is_oats_product_true_for_oats_names():
+    assert is_oats_product("Pintola High Protein Oats (Chocolate)") is True
+    assert is_oats_product("QUAKER ROLLED OATS") is True
+
+
+def test_is_oats_product_false_for_non_oats_names():
+    assert is_oats_product("Pintola All Natural Crunchy Peanut Butter") is False

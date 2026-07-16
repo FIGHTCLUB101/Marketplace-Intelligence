@@ -36,7 +36,7 @@ BRAND = "Goat Life"
 
 COLUMNS = ["City", "Locality", "Search Term", "Rank", "Product Name",
            "Pack Size", "Selling Price", "MRP", "Discount %", "Stock Left",
-           "Rating", "Serviceable"]
+           "Rating", "Sponsored", "Serviceable"]
 
 # ─────────────────────────────────────────────
 def extract_buy_price(price_str):
@@ -56,7 +56,18 @@ def create_driver():
     opts.add_argument("--start-maximized")
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_argument("--lang=en-IN")
-    return uc.Chrome(options=opts, version_main=149)
+    # Chrome throttles JS timers/rendering on minimized (occluded) windows,
+    # which breaks this scraper's fixed time.sleep() waits (the page hasn't
+    # actually finished loading yet when Selenium resumes) -- these three
+    # flags keep the renderer running at full speed regardless of window
+    # visibility, so the browser window can be minimized while this runs.
+    opts.add_argument("--disable-background-timer-throttling")
+    opts.add_argument("--disable-backgrounding-occluded-windows")
+    opts.add_argument("--disable-renderer-backgrounding")
+    # version_main intentionally omitted -- let undetected_chromedriver
+    # auto-detect the installed Chrome's major version. A hardcoded pin
+    # (previously 149) breaks the moment Chrome auto-updates past it.
+    return uc.Chrome(options=opts)
 
 # ─────────────────────────────────────────────
 def set_location(driver, locality, city):
@@ -164,6 +175,16 @@ def is_serviceable(driver):
         "not available in your area", "coming soon to your area"
     ])
 
+def has_sponsored_badge(img_srcs):
+    """True if any image src matches Blinkit's sponsored/"Ad" badge asset.
+    Blinkit renders that badge as an absolutely-positioned image overlay
+    (assets/ui/ad_without_bg.png) that sits outside the card's text flow --
+    it never appears in .text/innerText, so text-based parsing can't see
+    it. Verified against a live blinkit.com search results page
+    (2026-07-16): the badge image was present on a sponsored card and
+    absent on every plain organic card checked."""
+    return any("assets/ui/ad" in src for src in img_srcs if src)
+
 # ─────────────────────────────────────────────
 def scrape_brand(driver, brand, locality, city):
     products = []
@@ -225,11 +246,14 @@ def scrape_brand(driver, brand, locality, city):
                 rm = re.search(r'(\d\.\d)\s*\(', ct)
                 if rm and 1.0 <= float(rm.group(1)) <= 5.0: rating = rm.group(1)
 
+                img_srcs = [img.get_attribute("src") for img in card.find_elements(By.TAG_NAME, "img")]
+                sponsored = "True" if has_sponsored_badge(img_srcs) else "False"
+
                 products.append({
                     "City": city, "Locality": locality, "Search Term": brand, "Rank": rank,
                     "Product Name": name, "Pack Size": pack_size,
                     "Selling Price": sp, "MRP": mrp, "Discount %": disc,
-                    "Stock Left": stock, "Rating": rating, "Serviceable": "Yes",
+                    "Stock Left": stock, "Rating": rating, "Sponsored": sponsored, "Serviceable": "Yes",
                 })
                 print(f"    ✅ [Rank {rank}] {name[:31]:<31} {pack_size:<8} {sp} (MRP:{mrp})", flush=True)
 
@@ -246,8 +270,8 @@ def not_available_row(city, locality, reason="Not Available"):
     return {
         "City": city, "Locality": locality, "Search Term": BRAND, "Rank": "N/A",
         "Product Name": reason, "Pack Size": "N/A", "Selling Price": "N/A",
-        "MRP": "N/A", "Discount %": "N/A", "Stock Left": "N/A",
-        "Rating": "N/A", "Serviceable": "Yes" if reason == "Not Available" else "No",
+        "MRP": "N/A", "Discount %": "N/A", "Stock Left": "N/A", "Rating": "N/A",
+        "Sponsored": "N/A", "Serviceable": "Yes" if reason == "Not Available" else "No",
     }
 
 # ─────────────────────────────────────────────

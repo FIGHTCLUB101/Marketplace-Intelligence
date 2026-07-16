@@ -58,7 +58,18 @@ def create_driver():
     opts.add_argument("--start-maximized")
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_argument("--lang=en-IN")
-    return uc.Chrome(options=opts, version_main=149)
+    # Chrome throttles JS timers/rendering on minimized (occluded) windows,
+    # which breaks this scraper's fixed time.sleep() waits (the page hasn't
+    # actually finished loading yet when Selenium resumes) -- these three
+    # flags keep the renderer running at full speed regardless of window
+    # visibility, so the browser window can be minimized while this runs.
+    opts.add_argument("--disable-background-timer-throttling")
+    opts.add_argument("--disable-backgrounding-occluded-windows")
+    opts.add_argument("--disable-renderer-backgrounding")
+    # version_main intentionally omitted -- let undetected_chromedriver
+    # auto-detect the installed Chrome's major version. A hardcoded pin
+    # (previously 149) breaks the moment Chrome auto-updates past it.
+    return uc.Chrome(options=opts)
 
 def get_visible_input(driver):
     inputs = driver.find_elements(By.TAG_NAME, "input")
@@ -223,6 +234,14 @@ def parse_card_block(ct):
 
     return parsed_prods
 
+def is_oats_product(name):
+    """True if the product name indicates an actual oats product. Even with
+    "Oats" in the search query, these platforms can still surface non-oats
+    products from a matched brand (confirmed on Blinkit: "Pintola oats"
+    returned "Pintola All Natural Crunchy Peanut Butter") -- this scraper is
+    oats-category data only, so those get dropped regardless of brand."""
+    return "oat" in name.lower()
+
 # ─────────────────────────────────────────────
 def scrape_brand(driver, brand, locality, city):
     products = []
@@ -268,6 +287,7 @@ def scrape_brand(driver, brand, locality, city):
 
                 for p in parsed_prods:
                     if variants_added >= 15: break
+                    if not is_oats_product(p['name']): continue
 
                     products.append({
                         "City": city, "Locality": locality, "Brand Searched": brand,

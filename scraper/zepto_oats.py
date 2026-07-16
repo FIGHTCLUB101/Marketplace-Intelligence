@@ -131,6 +131,24 @@ def parse_zepto_card(card_text):
         'sponsored': is_sponsored
     }
 
+def has_sponsored_badge(img_srcs):
+    """True if any image src matches Zepto's sponsored/"Ad" badge asset.
+    Zepto renders that badge as a small image overlay (filename ending in
+    "_Ad.png"), not as text, so it never appears in a card's innerText --
+    the text-based "Ad"/"Sponsored" check in parse_zepto_card can't see it.
+    Verified against a live zepto.com search results page (2026-07-16): the
+    badge image was present on a sponsored card and absent on an organic
+    card for the same search."""
+    return any(src.lower().endswith("_ad.png") for src in img_srcs if src)
+
+def is_oats_product(name):
+    """True if the product name indicates an actual oats product. Even with
+    "Oats" in the search query, these platforms can still surface non-oats
+    products from a matched brand (confirmed on Blinkit: "Pintola oats"
+    returned "Pintola All Natural Crunchy Peanut Butter") -- this scraper is
+    oats-category data only, so those get dropped regardless of brand."""
+    return "oat" in name.lower()
+
 # ─────────────────────────────────────────────
 def beep():
     for _ in range(2):
@@ -141,48 +159,63 @@ def create_driver():
     opts = uc.ChromeOptions()
     opts.add_argument('--start-maximized')
     opts.add_argument('--disable-blink-features=AutomationControlled')
-    return uc.Chrome(options=opts, version_main=149)
+    # Chrome throttles JS timers/rendering on minimized (occluded) windows,
+    # which breaks this scraper's fixed time.sleep() waits (the page hasn't
+    # actually finished loading yet when Selenium resumes) -- these three
+    # flags keep the renderer running at full speed regardless of window
+    # visibility, so the browser window can be minimized while this runs.
+    opts.add_argument('--disable-background-timer-throttling')
+    opts.add_argument('--disable-backgrounding-occluded-windows')
+    opts.add_argument('--disable-renderer-backgrounding')
+    # version_main intentionally omitted -- let undetected_chromedriver
+    # auto-detect the installed Chrome's major version. A hardcoded pin
+    # (previously 149) breaks the moment Chrome auto-updates past it.
+    return uc.Chrome(options=opts)
 
 # ─────────────────────────────────────────────
 def set_location(driver, loc_str, wait):
     print(f"  📍 Setting location → {loc_str}", flush=True)
-    try:
-        driver.get('https://www.zeptonow.com/')
-        time.sleep(3)
-        if not wait_for_manual_unblock(driver, beep):
-            print("  ⚠️  Still blocked after waiting — continuing anyway.", flush=True)
 
-        # 1. Click Location
-        loc_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Select Location')]/.. | //span[contains(@class, 'cTJX6L')]/..")))
-        driver.execute_script("arguments[0].click();", loc_btn)
-        time.sleep(2)
-
-        # 2. Enter Location
-        loc_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Search a new address']")))
-        loc_input.clear()
-        loc_input.send_keys(loc_str)
-        time.sleep(3)
-
-        # 3. Click first autocomplete
-        first_result = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[contains(@class, 'line-clamp-2')]")))
-        driver.execute_script("arguments[0].click();", first_result)
-        time.sleep(3)
-
+    for attempt in range(3):
         try:
-            confirm_btn = driver.find_element(By.XPATH, "//button[contains(., 'Confirm') or contains(., 'Continue')]")
-            driver.execute_script("arguments[0].click();", confirm_btn)
+            driver.get('https://www.zeptonow.com/')
+            time.sleep(3)
+            if not wait_for_manual_unblock(driver, beep):
+                print("  ⚠️  Still blocked after waiting — continuing anyway.", flush=True)
+
+            # 1. Click Location
+            loc_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Select Location')]/.. | //span[contains(@class, 'cTJX6L')]/..")))
+            driver.execute_script("arguments[0].click();", loc_btn)
             time.sleep(2)
-        except:
-            pass
 
-        print(f"  ✅ Selected: (pressed Enter)", flush=True)
-        return True
+            # 2. Enter Location
+            loc_input = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Search a new address']")))
+            loc_input.clear()
+            loc_input.send_keys(loc_str)
+            time.sleep(3)
 
-    except Exception as e:
-        if is_dead_session_error(e):
-            raise  # let the outer loop restart the driver and retry the locality
-        print(f"  ❌ Error setting location: {str(e)[:100]}", flush=True)
-        return False
+            # 3. Click first autocomplete
+            first_result = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[contains(@class, 'line-clamp-2')]")))
+            driver.execute_script("arguments[0].click();", first_result)
+            time.sleep(3)
+
+            try:
+                confirm_btn = driver.find_element(By.XPATH, "//button[contains(., 'Confirm') or contains(., 'Continue')]")
+                driver.execute_script("arguments[0].click();", confirm_btn)
+                time.sleep(2)
+            except:
+                pass
+
+            print(f"  ✅ Selected: (pressed Enter)", flush=True)
+            return True
+
+        except Exception as e:
+            if is_dead_session_error(e):
+                raise  # let the outer loop restart the driver and retry the locality
+            print(f"  ❌ Attempt {attempt+1}: {str(e)[:100]}", flush=True)
+            time.sleep(3)
+
+    return False
 
 # ─────────────────────────────────────────────
 def scrape_brand(driver, brand, loc_str):
@@ -213,6 +246,12 @@ def scrape_brand(driver, brand, loc_str):
             card_text_clean = " | ".join([x.strip() for x in card_text.split('\n') if x.strip()])
 
             pdata = parse_zepto_card(card_text_clean)
+            if not is_oats_product(pdata['name']):
+                continue
+
+            img_srcs = [img.get_attribute("src") for img in card.find_elements(By.TAG_NAME, "img")]
+            if has_sponsored_badge(img_srcs):
+                pdata['sponsored'] = "True"
 
             sp_disp = pdata['sp'].replace('Rs.', '₹').replace(' ', '')
             mrp_disp = pdata['mrp'].replace('Rs.', '₹').replace(' ', '')

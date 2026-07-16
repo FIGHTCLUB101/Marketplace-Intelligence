@@ -46,7 +46,7 @@ BRANDS = [
 ]
 
 COLUMNS = ["City", "Locality", "Brand Searched", "Product Name", "Pack Size",
-           "Selling Price", "MRP", "Discount %", "Stock Left", "Rating", "Serviceable"]
+           "Selling Price", "MRP", "Discount %", "Stock Left", "Rating", "Sponsored", "Serviceable"]
 
 # ─────────────────────────────────────────────
 def extract_buy_price(price_str):
@@ -66,7 +66,18 @@ def create_driver():
     opts.add_argument("--start-maximized")
     opts.add_argument("--disable-blink-features=AutomationControlled")
     opts.add_argument("--lang=en-IN")
-    return uc.Chrome(options=opts, version_main=149)
+    # Chrome throttles JS timers/rendering on minimized (occluded) windows,
+    # which breaks this scraper's fixed time.sleep() waits (the page hasn't
+    # actually finished loading yet when Selenium resumes) -- these three
+    # flags keep the renderer running at full speed regardless of window
+    # visibility, so the browser window can be minimized while this runs.
+    opts.add_argument("--disable-background-timer-throttling")
+    opts.add_argument("--disable-backgrounding-occluded-windows")
+    opts.add_argument("--disable-renderer-backgrounding")
+    # version_main intentionally omitted -- let undetected_chromedriver
+    # auto-detect the installed Chrome's major version. A hardcoded pin
+    # (previously 149) breaks the moment Chrome auto-updates past it.
+    return uc.Chrome(options=opts)
 
 # ─────────────────────────────────────────────
 def set_location(driver, locality, city):
@@ -182,6 +193,35 @@ def get_brand_keyword(brand):
     if 'true elements' in b: return 'true'
     return b.split(' ')[0]
 
+def has_sponsored_badge(img_srcs):
+    """True if any image src matches Blinkit's sponsored/"Ad" badge asset.
+    Blinkit renders that badge as an absolutely-positioned image overlay
+    (assets/ui/ad_without_bg.png) that sits outside the card's text flow --
+    it never appears in .text/innerText, so text-based parsing can't see
+    it. Verified against a live blinkit.com search results page
+    (2026-07-16): the badge image was present on a sponsored card and
+    absent on every plain organic card checked."""
+    return any("assets/ui/ad" in src for src in img_srcs if src)
+
+def is_oats_product(name):
+    """True if the product name indicates an actual oats product. Even with
+    "Oats" in the search query, Blinkit still surfaces some non-oats
+    products from a matched brand (confirmed live: "Pintola oats" returned
+    "Pintola All Natural Crunchy Peanut Butter") -- this scraper is oats-
+    category data only, so those get dropped regardless of which brand
+    they belong to."""
+    return "oat" in name.lower()
+
+def is_goat_product(name):
+    """True if this product listing is GOAT Life's own product. Kept
+    regardless of which competitor brand was searched: Blinkit does surface
+    irrelevant substitutes when a searched brand is out of stock, but a GOAT
+    Life listing showing up under a competitor's search is a genuine,
+    valuable conquest/intrusion signal (it's what feeds the "GOAT also
+    here?" cross-reference and price-per-100g comparisons downstream) — not
+    noise to be filtered out the same way an unrelated substitute is."""
+    return "goat life" in name.lower()
+
 # ─────────────────────────────────────────────
 def scrape_brand(driver, brand, locality, city):
     products = []
@@ -212,10 +252,16 @@ def scrape_brand(driver, brand, locality, city):
         print(f"    🔍 '{brand}': {len(cards)} card(s) found on page", flush=True)
 
         keyword = get_brand_keyword(brand)
-        variants_added = 0
+        # own_variants_added, goat_variants_added, and intruder_variants_added
+        # are capped independently (3 each) so none of the three categories
+        # can starve out another by filling a shared slot budget first.
+        own_variants_added = 0
+        goat_variants_added = 0
+        intruder_variants_added = 0
 
         for card in cards:
-            if variants_added >= 3:  # STRICTLY MAX 3 VARIANTS PER BRAND
+            if (own_variants_added >= 3 and goat_variants_added >= 3        # STRICTLY MAX 3 VARIANTS EACH
+                    and intruder_variants_added >= 3):
                 break
 
             try:
@@ -225,9 +271,35 @@ def scrape_brand(driver, brand, locality, city):
                 lines = [l.strip() for l in ct.split('\n') if l.strip() and len(l.strip()) > 3]
                 name = lines[0] if lines else "Unknown"
 
-                # 🛑 FILTER: Ensure the product actually matches the brand we searched!
-                # Blinkit often shows competitors' products if out of stock.
-                if keyword not in name.lower():
+                # This scraper is oats-category data only -- a matched brand's
+                # non-oats products (e.g. Pintola's peanut butter) don't belong
+                # here regardless of which category below they'd otherwise fall
+                # into, so this gate runs before own/goat/intruder categorization.
+                if not is_oats_product(name):
+                    continue
+
+                is_own = keyword in name.lower()
+                is_goat = is_goat_product(name)
+
+                img_srcs = [img.get_attribute("src") for img in card.find_elements(By.TAG_NAME, "img")]
+                is_sponsored = has_sponsored_badge(img_srcs)
+                # A sponsored product that's neither the searched brand nor GOAT is a
+                # different competitor paying for placement in this brand's search —
+                # e.g. Alpino buying an ad slot when someone searches "Pintola Oats".
+                is_intruder = not is_own and not is_goat and is_sponsored
+
+                # 🛑 FILTER: Keep the searched brand's own products, GOAT Life rows
+                # (conquest signal), and sponsored competitor intrusions (a different
+                # brand buying paid placement here). Blinkit does also surface
+                # unsponsored, unrelated substitutes (e.g. when a brand is out of
+                # stock) — those are still dropped as noise, not signal.
+                if not is_own and not is_goat and not is_intruder:
+                    continue
+                if is_own and own_variants_added >= 3:
+                    continue
+                if is_goat and goat_variants_added >= 3:
+                    continue
+                if is_intruder and intruder_variants_added >= 3:
                     continue
 
                 pack_size = "N/A"
@@ -257,10 +329,13 @@ def scrape_brand(driver, brand, locality, city):
                     "City": city, "Locality": locality, "Brand Searched": brand,
                     "Product Name": name, "Pack Size": pack_size,
                     "Selling Price": sp, "MRP": mrp, "Discount %": disc,
-                    "Stock Left": stock, "Rating": rating, "Serviceable": "Yes",
+                    "Stock Left": stock, "Rating": rating,
+                    "Sponsored": "True" if is_sponsored else "False", "Serviceable": "Yes",
                 })
                 print(f"    ✅ {name[:38]:<38} {pack_size:<8} {sp} (MRP:{mrp})", flush=True)
-                variants_added += 1
+                if is_own: own_variants_added += 1
+                if is_goat: goat_variants_added += 1
+                if is_intruder: intruder_variants_added += 1
             except: pass
 
     except Exception as e:
@@ -274,8 +349,8 @@ def not_available_row(city, locality, brand, reason="Not Available"):
     return {
         "City": city, "Locality": locality, "Brand Searched": brand,
         "Product Name": reason, "Pack Size": "N/A", "Selling Price": "N/A",
-        "MRP": "N/A", "Discount %": "N/A", "Stock Left": "N/A",
-        "Rating": "N/A", "Serviceable": "Yes" if reason == "Not Available" else "No",
+        "MRP": "N/A", "Discount %": "N/A", "Stock Left": "N/A", "Rating": "N/A",
+        "Sponsored": "N/A", "Serviceable": "Yes" if reason == "Not Available" else "No",
     }
 
 # ─────────────────────────────────────────────

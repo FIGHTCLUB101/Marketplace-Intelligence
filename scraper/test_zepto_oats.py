@@ -1,4 +1,4 @@
-from zepto_oats import parse_zepto_card
+from zepto_oats import has_sponsored_badge, is_oats_product, parse_zepto_card
 
 
 def test_parse_zepto_card_extracts_name_price_pack_rating():
@@ -28,3 +28,32 @@ def test_parse_zepto_card_handles_missing_fields():
     assert result["sp"] == "N/A"
     assert result["mrp"] == "N/A"
     assert result["pack_size"] == "N/A"
+
+
+def test_has_sponsored_badge_detects_the_ad_asset():
+    # Verified against a live zepto.com search results page (2026-07-16):
+    # the sponsored badge is an image whose filename ends in "_Ad.png",
+    # never visible as text in the card's innerText.
+    srcs = [
+        "https://cdn.zeptonow.com/production/.../product_variant/x.jpg",
+        "https://cdn.zeptonow.com/production/.../inventory/product/y-P3_-_Ad.png",
+    ]
+    assert has_sponsored_badge(srcs) is True
+
+
+def test_has_sponsored_badge_false_for_organic_card():
+    srcs = ["https://cdn.zeptonow.com/production/.../product_variant/x.jpg"]
+    assert has_sponsored_badge(srcs) is False
+
+
+def test_has_sponsored_badge_handles_missing_src():
+    assert has_sponsored_badge([None, ""]) is False
+
+
+def test_is_oats_product_true_for_oats_names():
+    assert is_oats_product("Pintola High Protein Oats (Chocolate)") is True
+    assert is_oats_product("QUAKER ROLLED OATS") is True
+
+
+def test_is_oats_product_false_for_non_oats_names():
+    assert is_oats_product("Pintola All Natural Crunchy Peanut Butter") is False
