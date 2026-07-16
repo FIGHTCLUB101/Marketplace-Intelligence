@@ -1,8 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import {
-  computeVisibilityRate, formatBrandDefenceRate, formatTrendRows, groupChangesByProduct,
-  normalizeBrandName, severityFor,
+  compareTableRows, formatBrandDefenceRate, formatTrendRows, groupChangesByProduct, severityFor,
 } from '../shelf-monitor.js';
 
 test('severityFor: critical when goat_displaced or goat_gone non-empty', () => {
@@ -37,17 +36,23 @@ test('formatBrandDefenceRate: formats a number, handles null', () => {
   assert.equal(formatBrandDefenceRate(null), 'N/A');
 });
 
-test('normalizeBrandName strips a trailing " Oats" suffix', () => {
-  assert.equal(normalizeBrandName('Pintola Oats'), 'Pintola');
-  assert.equal(normalizeBrandName('The Whole Truth Oats'), 'The Whole Truth');
-  assert.equal(normalizeBrandName('Pintola'), 'Pintola');
+test('compareTableRows: ownOnly narrows to product names containing the brand', () => {
+  const rows = [
+    { city_raw: 'Bangalore', locality_raw: 'Indiranagar', product_name: 'Pintola High Protein Oats', rank: 1 },
+    { city_raw: 'Bangalore', locality_raw: 'Indiranagar', product_name: 'MuscleBlaze High Protein Oats', rank: 2 },
+  ];
+  const { filtered } = compareTableRows(rows, new Set(), 'all', 'all', 'Pintola', true);
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].product_name, 'Pintola High Protein Oats');
 });
 
-test('computeVisibilityRate: percentage of is_goat rows, null for empty', () => {
-  assert.equal(computeVisibilityRate([]), null);
-  assert.equal(computeVisibilityRate([{ is_goat: true }, { is_goat: false }]), 50);
-  assert.equal(computeVisibilityRate([{ is_goat: false }, { is_goat: false }]), 0);
-  assert.equal(computeVisibilityRate([{ is_goat: true }]), 100);
+test('compareTableRows: ownOnly false (or omitted) keeps every product', () => {
+  const rows = [
+    { city_raw: 'Bangalore', locality_raw: 'Indiranagar', product_name: 'Pintola High Protein Oats', rank: 1 },
+    { city_raw: 'Bangalore', locality_raw: 'Indiranagar', product_name: 'MuscleBlaze High Protein Oats', rank: 2 },
+  ];
+  const { filtered } = compareTableRows(rows, new Set(), 'all', 'all');
+  assert.equal(filtered.length, 2);
 });
 
 test('groupChangesByProduct groups same (eventType, product) pairs and counts entries', () => {

@@ -179,3 +179,13 @@ class ShelfTrends(BaseModel):
     platform: str
     weeks: list[str]
     series: list[TrendSeries]
+
+
+class GoatCoverageRow(BaseModel):
+    city_raw: str
+    locality_raw: str
+
+
+class VisibilityRate(BaseModel):
+    platform: str
+    visibility_rate: Optional[float] = None

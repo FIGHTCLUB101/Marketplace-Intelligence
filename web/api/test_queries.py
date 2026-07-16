@@ -5,7 +5,8 @@ import pytest
 from db import get_connection
 from queries import (
     compute_belts, fetch_brand_defence_rate, fetch_current_snapshot, fetch_drop_calendar,
-    fetch_latest_two_scrape_run_ids, fetch_shelf_trends, fetch_snapshot_rows,
+    fetch_goat_coverage, fetch_latest_two_scrape_run_ids, fetch_shelf_trends, fetch_snapshot_rows,
+    fetch_visibility_rate,
 )
 
 requires_db = pytest.mark.skipif(
@@ -153,6 +154,138 @@ def test_fetch_current_snapshot_returns_full_columns_for_run():
                 cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (snapshot_id,))
             if scrape_run_id is not None:
                 cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()
+
+
+@requires_db
+def test_fetch_current_snapshot_filters_by_brand_searched():
+    conn = get_connection()
+    scrape_run_id = None
+    snapshot_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_brandfilter", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            for brand, product in [
+                ("Pintola Oats", "Pintola High Protein Oats"),
+                ("Alpino Oats", "Alpino Overnight Oats"),
+            ]:
+                cur.execute(
+                    "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                    "brand_searched, rank, product_name, selling_price, is_goat) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                    (scrape_run_id, "test_platform_xyz_brandfilter", "TestCityXYZ", "TestLocalityXYZ",
+                     brand, 1, product, 199.0, False),
+                )
+                snapshot_ids.append(cur.fetchone()[0])
+        conn.commit()
+
+        rows = fetch_current_snapshot(conn, scrape_run_id, brand_searched="pintola")
+        assert len(rows) == 1
+        assert rows[0]["product_name"] == "Pintola High Protein Oats"
+
+        rows_unfiltered = fetch_current_snapshot(conn, scrape_run_id)
+        assert len(rows_unfiltered) == 2
+    finally:
+        with conn.cursor() as cur:
+            for sid in snapshot_ids:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (sid,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()
+
+
+@requires_db
+def test_fetch_goat_coverage_returns_distinct_is_goat_localities():
+    conn = get_connection()
+    scrape_run_id = None
+    snapshot_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_goatcov", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            rows_to_insert = [
+                # two is_goat rows in the same city/locality (different brand
+                # searches) should collapse to one coverage entry
+                ("TestCityXYZ", "TestLocalityXYZ", "Pintola Oats", True),
+                ("TestCityXYZ", "TestLocalityXYZ", "Alpino Oats", True),
+                ("TestCityXYZ", "OtherLocalityXYZ", "Pintola Oats", False),
+            ]
+            for city, locality, brand, is_goat in rows_to_insert:
+                cur.execute(
+                    "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                    "brand_searched, rank, product_name, selling_price, is_goat) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                    (scrape_run_id, "test_platform_xyz_goatcov", city, locality,
+                     brand, 1, "Some Oats Product", 199.0, is_goat),
+                )
+                snapshot_ids.append(cur.fetchone()[0])
+        conn.commit()
+
+        coverage = fetch_goat_coverage(conn, scrape_run_id)
+        assert coverage == [{"city_raw": "TestCityXYZ", "locality_raw": "TestLocalityXYZ"}]
+    finally:
+        with conn.cursor() as cur:
+            for sid in snapshot_ids:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (sid,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()
+
+
+@requires_db
+def test_fetch_visibility_rate_computes_percentage_and_none_for_empty_run():
+    conn = get_connection()
+    scrape_run_id = None
+    empty_run_id = None
+    snapshot_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_visrate", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            for is_goat in [True, False, False, False]:
+                cur.execute(
+                    "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                    "brand_searched, rank, product_name, selling_price, is_goat) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                    (scrape_run_id, "test_platform_xyz_visrate", "TestCityXYZ", "TestLocalityXYZ",
+                     "Pintola Oats", 1, "Some Oats Product", 199.0, is_goat),
+                )
+                snapshot_ids.append(cur.fetchone()[0])
+
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_visrate_empty", "test.xlsx"),
+            )
+            empty_run_id = cur.fetchone()[0]
+        conn.commit()
+
+        assert fetch_visibility_rate(conn, scrape_run_id) == 25.0
+        assert fetch_visibility_rate(conn, empty_run_id) is None
+    finally:
+        with conn.cursor() as cur:
+            for sid in snapshot_ids:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (sid,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+            if empty_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (empty_run_id,))
         conn.commit()
         conn.close()
 

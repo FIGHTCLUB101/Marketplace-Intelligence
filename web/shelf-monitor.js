@@ -20,14 +20,6 @@ export function formatBrandDefenceRate(value) {
   return value === null || value === undefined ? 'N/A' : `${value.toFixed(1)}%`;
 }
 
-export function normalizeBrandName(name) {
-  return name.replace(/\s+Oats$/i, '').trim();
-}
-
-export function computeVisibilityRate(rows) {
-  if (!rows.length) return null;
-  return (100 * rows.filter((r) => r.is_goat).length) / rows.length;
-}
 
 const EVENT_META = {
   goat_displaced: { severity: 'critical', label: 'displaced' },
@@ -229,14 +221,31 @@ const COMPETITOR_BRANDS = [
   'The Whole Truth', 'True Elements', 'Yoga Bar',
 ];
 
-const compareState = { snapshots: {}, visibilityRates: {} };
+const compareState = { snapshots: {}, coverage: {}, visibilityRates: {} };
 
-async function fetchPlatformSnapshot(platform) {
-  if (!compareState.snapshots[platform]) {
-    compareState.snapshots[platform] = await fetchJson(`/api/shelf/snapshot?platform=${platform}`);
-    compareState.visibilityRates[platform] = computeVisibilityRate(compareState.snapshots[platform]);
+async function fetchBrandSnapshot(platform, brand) {
+  const key = `${platform}|||${brand}`;
+  if (!compareState.snapshots[key]) {
+    compareState.snapshots[key] =
+      await fetchJson(`/api/shelf/snapshot?platform=${platform}&brand_searched=${encodeURIComponent(brand)}`);
   }
-  return compareState.snapshots[platform];
+  return compareState.snapshots[key];
+}
+
+async function fetchGoatCoverage(platform) {
+  if (!compareState.coverage[platform]) {
+    const rows = await fetchJson(`/api/shelf/goat-coverage?platform=${platform}`);
+    compareState.coverage[platform] = new Set(rows.map((r) => `${r.city_raw}|||${r.locality_raw}`));
+  }
+  return compareState.coverage[platform];
+}
+
+async function fetchVisibilityRate(platform) {
+  if (!(platform in compareState.visibilityRates)) {
+    const body = await fetchJson(`/api/shelf/visibility-rate?platform=${platform}`);
+    compareState.visibilityRates[platform] = body.visibility_rate;
+  }
+  return compareState.visibilityRates[platform];
 }
 
 function headlineStatRow() {
@@ -248,25 +257,25 @@ function headlineStatRow() {
   return `<div class="visibility-row">${stats}</div>`;
 }
 
-function compareTableRows(rows, brand, city, locality) {
-  const normalized = normalizeBrandName(brand);
-  const brandRows = rows.filter((r) => normalizeBrandName(r.brand_searched || '') === normalized);
-  const goatLocalities = new Set(
-    rows.filter((r) => r.is_goat).map((r) => `${r.city_raw}|||${r.locality_raw}`)
-  );
-  const filtered = brandRows.filter((r) =>
+export function compareTableRows(rows, goatLocalities, city, locality, brand, ownOnly) {
+  const brandFiltered = ownOnly
+    ? rows.filter((r) => (r.product_name || '').toLowerCase().includes(brand.toLowerCase()))
+    : rows;
+  const filtered = brandFiltered.filter((r) =>
     (city === 'all' || r.city_raw === city) && (locality === 'all' || r.locality_raw === locality));
-  const hasRank = brandRows.some((r) => r.rank !== null && r.rank !== undefined);
+  const hasRank = brandFiltered.some((r) => r.rank !== null && r.rank !== undefined);
   return { filtered, hasRank, goatLocalities };
 }
 
-function renderCompareTable(rows, brand, city, locality) {
-  const { filtered, hasRank, goatLocalities } = compareTableRows(rows, brand, city, locality);
+function renderCompareTable(rows, goatLocalities, city, locality, brand, ownOnly) {
+  const { filtered, hasRank } = compareTableRows(rows, goatLocalities, city, locality, brand, ownOnly);
   if (!filtered.length) return '<p class="info">No data for this brand/filter combination.</p>';
-  const head = `<tr><th>City</th><th>Locality</th>${hasRank ? '<th>Rank</th>' : ''}<th>Price</th><th>MRP</th><th>Discount %</th><th>GOAT also here?</th></tr>`;
+  const showCity = city === 'all';
+  const showLocality = locality === 'all';
+  const head = `<tr>${showCity ? '<th>City</th>' : ''}${showLocality ? '<th>Locality</th>' : ''}<th>Product</th>${hasRank ? '<th>Rank</th>' : ''}<th>Price</th><th>MRP</th><th>Discount %</th><th>GOAT also here?</th></tr>`;
   const body = filtered.map((r) => {
     const goatHere = goatLocalities.has(`${r.city_raw}|||${r.locality_raw}`) ? 'Yes' : 'No';
-    return `<tr><td>${r.city_raw}</td><td>${r.locality_raw}</td>${hasRank ? `<td class="mono">${r.rank ?? '—'}</td>` : ''}<td class="mono">${r.selling_price ?? '—'}</td><td class="mono">${r.mrp ?? '—'}</td><td class="mono">${r.discount_pct ?? '—'}</td><td>${goatHere}</td></tr>`;
+    return `<tr>${showCity ? `<td>${r.city_raw}</td>` : ''}${showLocality ? `<td>${r.locality_raw}</td>` : ''}<td>${r.product_name ?? '—'}</td>${hasRank ? `<td class="mono">${r.rank ?? '—'}</td>` : ''}<td class="mono">${r.selling_price ?? '—'}</td><td class="mono">${r.mrp ?? '—'}</td><td class="mono">${r.discount_pct ?? '—'}</td><td>${goatHere}</td></tr>`;
   }).join('');
   return `<table class="lb">${head}${body}</table>`;
 }
@@ -292,42 +301,59 @@ async function renderCompareBrands(el) {
       <div class="field"><label>Brand</label><select class="f-cmp-brand">${COMPETITOR_BRANDS.map((b) => `<option>${b}</option>`).join('')}</select></div>
       <div class="field"><label>City</label><select class="f-cmp-city"><option value="all">All cities</option></select></div>
       <div class="field"><label>Locality</label><select class="f-cmp-locality"><option value="all">All localities</option></select></div>
+      <div class="field checkbox-field">
+        <label><input type="checkbox" class="f-cmp-own-only"> Only this brand's own products</label>
+      </div>
     </div>
+    <p class="info">"Brand" is the search term used to scrape Blinkit — the table below shows every product that appeared in results for that search (including competitors), not just the brand's own listings. Check the box to narrow to the brand's own products only.</p>
     <div class="compare-table"><p class="info">Select a platform to see current shelf data.</p></div>`;
 
   const platformSel = el.querySelector('.f-cmp-platform');
   const brandSel = el.querySelector('.f-cmp-brand');
   const citySel = el.querySelector('.f-cmp-city');
   const localitySel = el.querySelector('.f-cmp-locality');
+  const ownOnlyCheckbox = el.querySelector('.f-cmp-own-only');
   const table = el.querySelector('.compare-table');
 
   const rerenderTable = () => {
-    const rows = compareState.snapshots[platformSel.value] || [];
-    table.innerHTML = renderCompareTable(rows, brandSel.value, citySel.value, localitySel.value);
+    const key = `${platformSel.value}|||${brandSel.value}`;
+    const rows = compareState.snapshots[key] || [];
+    const goatLocalities = compareState.coverage[platformSel.value] || new Set();
+    table.innerHTML = renderCompareTable(
+      rows, goatLocalities, citySel.value, localitySel.value, brandSel.value, ownOnlyCheckbox.checked
+    );
   };
 
-  platformSel.addEventListener('change', async () => {
+  const loadBrandData = async () => {
     const platform = platformSel.value;
+    const brand = brandSel.value;
     if (!platform) {
       table.innerHTML = '<p class="info">Select a platform to see current shelf data.</p>';
       return;
     }
     table.innerHTML = '<p class="info">Loading…</p>';
     try {
-      const rows = await fetchPlatformSnapshot(platform);
-      if (activeSubtabId !== myId || platformSel.value !== platform) return;
+      const [rows] = await Promise.all([
+        fetchBrandSnapshot(platform, brand),
+        fetchGoatCoverage(platform),
+        fetchVisibilityRate(platform),
+      ]);
+      if (activeSubtabId !== myId || platformSel.value !== platform || brandSel.value !== brand) return;
       el.querySelector('.visibility-row').outerHTML = headlineStatRow();
       fillCompareCityLocality(citySel, localitySel, rows, rerenderTable);
     } catch (e) {
-      if (activeSubtabId !== myId || platformSel.value !== platform) return;
+      if (activeSubtabId !== myId || platformSel.value !== platform || brandSel.value !== brand) return;
       console.error('Compare Brands snapshot fetch failed', e);
       table.innerHTML = '<p class="info">Failed to load — check the API is running.</p>';
       return;
     }
     rerenderTable();
-  });
-  brandSel.addEventListener('change', rerenderTable);
+  };
+
+  platformSel.addEventListener('change', loadBrandData);
+  brandSel.addEventListener('change', loadBrandData);
   localitySel.addEventListener('change', rerenderTable);
+  ownOnlyCheckbox.addEventListener('change', rerenderTable);
 }
 
 const SUBTABS = [

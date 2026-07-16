@@ -121,6 +121,9 @@ h3.gh{font-size:13px;font-weight:600;margin:22px 0 8px}
 .filter-row{display:flex;gap:14px;margin:14px 0;flex-wrap:wrap}
 .field select{font-family:var(--sans);font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;outline:none;min-width:160px}
 .field select:focus{border-color:var(--goat)}
+.checkbox-field{flex-direction:row;align-items:center;justify-content:flex-start}
+.checkbox-field label{display:flex;align-items:center;gap:6px;text-transform:none;letter-spacing:normal;font-family:var(--sans);font-size:13px;color:var(--ink)}
+.checkbox-field input[type="checkbox"]{width:auto;margin:0}
 
 .group-card{display:flex;flex-direction:column;gap:6px}
 .group-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

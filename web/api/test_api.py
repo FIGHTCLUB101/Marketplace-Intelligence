@@ -441,3 +441,127 @@ def test_get_shelf_snapshot_returns_current_rows_for_seeded_platform():
                 cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
         conn.commit()
         conn.close()
+
+
+@requires_db
+def test_get_shelf_snapshot_filters_by_brand_searched():
+    conn = get_connection()
+    scrape_run_id = None
+    snapshot_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_snapbrand", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            for brand, product in [
+                ("Pintola Oats", "Pintola High Protein Oats"),
+                ("Alpino Oats", "Alpino Overnight Oats"),
+            ]:
+                cur.execute(
+                    "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                    "brand_searched, rank, product_name, selling_price, is_goat) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                    (scrape_run_id, "test_platform_xyz_snapbrand", "TestCityXYZ", "TestLocalityXYZ",
+                     brand, 1, product, 199.0, False),
+                )
+                snapshot_ids.append(cur.fetchone()[0])
+        conn.commit()
+
+        response = client.get(
+            "/api/shelf/snapshot?platform=test_platform_xyz_snapbrand&brand_searched=Pintola"
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        assert body[0]["product_name"] == "Pintola High Protein Oats"
+    finally:
+        with conn.cursor() as cur:
+            for sid in snapshot_ids:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (sid,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()
+
+
+@requires_db
+def test_get_shelf_goat_coverage_returns_distinct_is_goat_localities():
+    conn = get_connection()
+    scrape_run_id = None
+    snapshot_id = None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_goatcov_api", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                "brand_searched, rank, product_name, selling_price, is_goat) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                (scrape_run_id, "test_platform_xyz_goatcov_api", "TestCityXYZ", "TestLocalityXYZ",
+                 "Pintola Oats", 1, "GOAT Life Oats", 199.0, True),
+            )
+            snapshot_id = cur.fetchone()[0]
+        conn.commit()
+
+        response = client.get("/api/shelf/goat-coverage?platform=test_platform_xyz_goatcov_api")
+        assert response.status_code == 200
+        assert response.json() == [{"city_raw": "TestCityXYZ", "locality_raw": "TestLocalityXYZ"}]
+    finally:
+        with conn.cursor() as cur:
+            if snapshot_id is not None:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (snapshot_id,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()
+
+
+@requires_db
+def test_get_shelf_visibility_rate_returns_none_for_platform_with_no_runs():
+    response = client.get("/api/shelf/visibility-rate?platform=test_platform_xyz_empty_visrate")
+    assert response.status_code == 200
+    assert response.json() == {"platform": "test_platform_xyz_empty_visrate", "visibility_rate": None}
+
+
+@requires_db
+def test_get_shelf_visibility_rate_computes_percentage():
+    conn = get_connection()
+    scrape_run_id = None
+    snapshot_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_visrate_api", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            for is_goat in [True, False]:
+                cur.execute(
+                    "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                    "brand_searched, rank, product_name, selling_price, is_goat) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                    (scrape_run_id, "test_platform_xyz_visrate_api", "TestCityXYZ", "TestLocalityXYZ",
+                     "Pintola Oats", 1, "Some Oats Product", 199.0, is_goat),
+                )
+                snapshot_ids.append(cur.fetchone()[0])
+        conn.commit()
+
+        response = client.get("/api/shelf/visibility-rate?platform=test_platform_xyz_visrate_api")
+        assert response.status_code == 200
+        assert response.json() == {"platform": "test_platform_xyz_visrate_api", "visibility_rate": 50.0}
+    finally:
+        with conn.cursor() as cur:
+            for sid in snapshot_ids:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (sid,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()

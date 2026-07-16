@@ -23,8 +23,8 @@ import shelf_changes
 from db import get_connection
 from models import (
     Annotation, AnnotationCreate, Belt, CompetitorBreadth, CompetitorSummaryRow, Freshness,
-    GoatDisplaced, Locality, PriceChange, ProductEvent, RankIntrusion, RankMoved, ShelfChanges,
-    ShelfSnapshot, ShelfTrends, TrendSeries,
+    GoatCoverageRow, GoatDisplaced, Locality, PriceChange, ProductEvent, RankIntrusion, RankMoved,
+    ShelfChanges, ShelfSnapshot, ShelfTrends, TrendSeries, VisibilityRate,
 )
 
 logger = logging.getLogger("goatlife_api")
@@ -156,12 +156,36 @@ def get_shelf_trends(platform: str = Query(default="blinkit_goatlife")):
 
 
 @app.get("/api/shelf/snapshot", response_model=list[ShelfSnapshot])
-def get_shelf_snapshot(platform: str = Query(...)):
+def get_shelf_snapshot(platform: str = Query(...), brand_searched: Optional[str] = Query(default=None)):
     conn = get_connection()
     try:
         newest_id, _ = queries.fetch_latest_two_scrape_run_ids(conn, platform)
         if newest_id is None:
             return []
-        return queries.fetch_current_snapshot(conn, newest_id)
+        return queries.fetch_current_snapshot(conn, newest_id, brand_searched=brand_searched)
+    finally:
+        conn.close()
+
+
+@app.get("/api/shelf/goat-coverage", response_model=list[GoatCoverageRow])
+def get_shelf_goat_coverage(platform: str = Query(...)):
+    conn = get_connection()
+    try:
+        newest_id, _ = queries.fetch_latest_two_scrape_run_ids(conn, platform)
+        if newest_id is None:
+            return []
+        return queries.fetch_goat_coverage(conn, newest_id)
+    finally:
+        conn.close()
+
+
+@app.get("/api/shelf/visibility-rate", response_model=VisibilityRate)
+def get_shelf_visibility_rate(platform: str = Query(...)):
+    conn = get_connection()
+    try:
+        newest_id, _ = queries.fetch_latest_two_scrape_run_ids(conn, platform)
+        if newest_id is None:
+            return {"platform": platform, "visibility_rate": None}
+        return {"platform": platform, "visibility_rate": queries.fetch_visibility_rate(conn, newest_id)}
     finally:
         conn.close()

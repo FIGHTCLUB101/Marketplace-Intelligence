@@ -193,18 +193,73 @@ SHELF_CURRENT_SNAPSHOT_SQL = """
         s.serviceable, s.is_goat, r.started_at, r.finished_at
     FROM shelf_snapshots s
     JOIN scrape_runs r ON r.scrape_run_id = s.scrape_run_id
-    WHERE s.scrape_run_id = %s
+    WHERE s.scrape_run_id = %(scrape_run_id)s
+      AND (
+        %(brand_searched)s IS NULL
+        OR LOWER(regexp_replace(s.brand_searched, '\\s+Oats$', '', 'i')) = LOWER(%(brand_searched)s)
+      )
     ORDER BY s.city_raw, s.locality_raw
 """
 
 
-def fetch_current_snapshot(conn, scrape_run_id):
-    """Returns every shelf_snapshots row for one run (all columns), unlike
+def fetch_current_snapshot(conn, scrape_run_id, brand_searched=None):
+    """Returns shelf_snapshots rows for one run (all columns), unlike
     fetch_snapshot_rows which only selects the narrow subset shelf_changes.py's
-    diff functions need. Used for current-state (non-diffed) views."""
+    diff functions need. Used for current-state (non-diffed) views.
+
+    brand_searched scopes the result to one competitor brand's search rows
+    (matched the same way the frontend's normalizeBrandName does — case
+    insensitive, trailing " Oats" ignored). The unfiltered response for a
+    full platform run is ~30MB (56k+ rows), well past Vercel's 4.5MB
+    response-size limit, so callers serving this over HTTP must always
+    pass it."""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute(SHELF_CURRENT_SNAPSHOT_SQL, (scrape_run_id,))
+        cur.execute(SHELF_CURRENT_SNAPSHOT_SQL, {
+            "scrape_run_id": scrape_run_id, "brand_searched": brand_searched,
+        })
         return cur.fetchall()
+
+
+SHELF_GOAT_COVERAGE_SQL = """
+    SELECT DISTINCT city_raw, locality_raw
+    FROM shelf_snapshots
+    WHERE scrape_run_id = %s AND is_goat
+    ORDER BY city_raw, locality_raw
+"""
+
+
+def fetch_goat_coverage(conn, scrape_run_id):
+    """Returns the {city_raw, locality_raw} pairs where a GOAT Life product
+    appeared in this run, across every brand search — used for the Compare
+    Brands "GOAT also here?" cross-reference without pulling the full
+    (~30MB) unfiltered snapshot just to find its ~1% is_goat rows."""
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(SHELF_GOAT_COVERAGE_SQL, (scrape_run_id,))
+        return cur.fetchall()
+
+
+SHELF_VISIBILITY_RATE_SQL = """
+    SELECT
+        COUNT(*) FILTER (WHERE is_goat) AS goat_count,
+        COUNT(*) AS total_count
+    FROM shelf_snapshots
+    WHERE scrape_run_id = %s
+"""
+
+
+def fetch_visibility_rate(conn, scrape_run_id):
+    """Returns the % (0-100, 1 decimal) of all shelf_snapshot rows across
+    every brand search where a GOAT Life product appeared — the Compare
+    Brands headline stat. None if the run has zero rows. Computed as a
+    single SQL aggregate so the ~56k-row platform snapshot never has to be
+    pulled into the app just to compute one ratio."""
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(SHELF_VISIBILITY_RATE_SQL, (scrape_run_id,))
+        row = cur.fetchone()
+        goat_count, total_count = row["goat_count"], row["total_count"]
+    if not total_count:
+        return None
+    return round(100 * goat_count / total_count, 1)
 
 
 def fetch_drop_calendar(conn):
