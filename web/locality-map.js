@@ -153,16 +153,19 @@ export function showProfile(p) {
       ${brandDistRow('Swiggy Instamart', num(p.nearest_swiggy_km))}
     </div>`;
   const blComp = num(p.blinkit_n_competitor_brands);
-  const blAvg  = num(p.blinkit_competitor_avg_price);
-  const blAdv  = num(p.price_advantage_blinkit);
+  const blAvg  = num(p.blinkit_competitor_avg_price_per_100g);
+  const blAdv  = num(p.price_advantage_blinkit_per_100g);
   const ztComp = num(p.zepto_n_competitor_brands);
+  const priceAdvHtml = (a) => a >= 0
+    ? '<span style="color:var(--status-success)">+₹' + Math.round(a) + '/100g cheaper</span>'
+    : '<span style="color:var(--status-warning)">₹' + Math.round(-a) + '/100g pricier</span>';
   const compSection = blComp !== null ? `
     <div class="p-sep"></div>
     <div class="p-section-head">Competitive position · Oats aisle</div>
     <div class="p-grid">
       ${row('GOAT on Blinkit', truthy(p.blinkit_goat_present) ? '<span style="color:var(--status-success)">Listed ✓</span>' : '<span style="color:var(--status-neutral)">Not yet</span>')}
-      ${blAvg !== null ? row('Competitor avg price', '₹' + Math.round(blAvg), true) : ''}
-      ${blAdv !== null ? row('GOAT price advantage', '<span style="color:var(--status-success)">+₹' + Math.round(blAdv) + ' cheaper</span>') : ''}
+      ${blAvg !== null ? row('Competitor avg price /100g', '₹' + Math.round(blAvg), true) : ''}
+      ${blAdv !== null ? row('GOAT price advantage', priceAdvHtml(blAdv)) : ''}
       ${truthy(p.is_white_space) ? '<div class="pr"><span class="pill" style="background:var(--status-success-bg);color:var(--status-success-text);font-size:11px">White space — no competitors on BL or Zepto</span></div>' : ''}
     </div>` : '';
 

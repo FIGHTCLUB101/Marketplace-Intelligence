@@ -24,9 +24,9 @@ COLS = ["AREA", "ADDRESS", "PINCODE", "lat", "lng", "icp_score", "icp_verdict", 
         "res_avg_buy_imputed", "price_is_imputed", "employer_quality", "primary_sector",
         "is_metro_connected", "belt_id", "belt_size", "pareto_optimal", "hidden_gem_v2", "spillover_gem",
         # competitive overlay (added by scripts/enrich_competitor_data.py — optional columns)
-        "blinkit_n_competitor_brands", "blinkit_competitor_avg_price", "blinkit_goat_present",
-        "zepto_n_competitor_brands", "zepto_competitor_avg_price", "zepto_goat_present",
-        "price_advantage_blinkit", "is_white_space"]
+        "blinkit_n_competitor_brands", "blinkit_competitor_avg_price_per_100g", "blinkit_goat_present",
+        "zepto_n_competitor_brands", "zepto_competitor_avg_price_per_100g", "zepto_goat_present",
+        "price_advantage_blinkit_per_100g", "is_white_space"]
 
 # Only keep COLS that actually exist in the parquet (competitive cols are optional)
 COLS = [c for c in COLS if c in df.columns]
@@ -40,7 +40,8 @@ geo["lng"] = src["lng_r"].to_numpy()
 geo["color"] = geo["gtm_action"].map(contract.GTM_COLORS).fillna(contract.GTM_DEFAULT_COLOR)
 for c in ["icp_score", "res_avg_buy_imputed", "nearest_known_darkstore_km",
           "nearest_blinkit_km", "nearest_zepto_km", "nearest_swiggy_km", "employer_quality",
-          "blinkit_competitor_avg_price", "zepto_competitor_avg_price", "price_advantage_blinkit"]:
+          "blinkit_competitor_avg_price_per_100g", "zepto_competitor_avg_price_per_100g",
+          "price_advantage_blinkit_per_100g"]:
     if c in geo.columns:
         geo[c] = geo[c].round(1)
 for c in ["pareto_optimal", "hidden_gem_v2", "spillover_gem", "is_metro_connected",

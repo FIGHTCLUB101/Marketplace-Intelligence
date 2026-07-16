@@ -20,10 +20,15 @@ export function renderLeaderboard() {
     if (l.blinkit_goat_present === '' || l.blinkit_goat_present == null) return null;
     return `GOAT on Blinkit ${truthy(l.blinkit_goat_present) ? '<span style="color:var(--status-success)">✓</span>' : '<span style="color:var(--status-neutral)">—</span>'}`;
   };
-  const pricePart = (a) => a !== null ? `<span style="color:var(--status-success)">+₹${Math.round(a)}</span> price advantage` : null;
+  const pricePart = (a) => {
+    if (a === null) return null;
+    return a >= 0
+      ? `<span style="color:var(--status-success)">+₹${Math.round(a)}/100g</span> cheaper than competitors`
+      : `<span style="color:var(--status-warning)">₹${Math.round(-a)}/100g</span> pricier than competitors`;
+  };
 
   const insightCard = (l, rank) => {
-    const a = num(l.price_advantage_blinkit);
+    const a = num(l.price_advantage_blinkit_per_100g);
     const metaParts = [goatPart(l), pricePart(a)].filter(Boolean);
     const metaLine2 = metaParts.length ? `<div class="insight-meta">${metaParts.join(' · ')}</div>` : '';
     return `
@@ -52,7 +57,7 @@ export function renderLeaderboard() {
   };
 
   const renderTableRow = (l) => {
-    const a = num(l.price_advantage_blinkit);
+    const a = num(l.price_advantage_blinkit_per_100g);
     const goatBL = l.blinkit_goat_present !== '' && l.blinkit_goat_present != null
       ? (truthy(l.blinkit_goat_present) ? '<span style="color:var(--status-success)">✓</span>' : '<span style="color:var(--status-neutral)">—</span>')
       : '<span style="color:#ccc">n/a</span>';
@@ -62,14 +67,16 @@ export function renderLeaderboard() {
       <td>${l.serviceability_state}</td><td>${l.archetype_ml}</td>
       <td>${gtmDot(l.gtm_action)}</td>
       <td class="mono">${goatBL}</td>
-      <td class="mono">${a !== null ? '<span style="color:var(--status-success)">+₹' + Math.round(a) + '</span>' : '—'}</td></tr>`;
+      <td class="mono">${a !== null ? (a >= 0
+        ? '<span style="color:var(--status-success)">+₹' + Math.round(a) + '</span>'
+        : '<span style="color:var(--status-warning)">₹' + Math.round(-a) + '</span>') : '—'}</td></tr>`;
   };
 
   const tableHtml = `
     <div class="table-wrap">
     <table class="lb" id="leaderboard-table"><thead><tr>
       <th>#</th><th data-sort-key="locality">Locality</th><th data-sort-key="city">City</th><th data-sort-key="icp">ICP</th><th>Verdict</th><th>Serviceability</th>
-      <th>Archetype</th><th>Action</th><th data-sort-key="goat">GOAT on BL</th><th data-sort-key="price">Price Adv.</th></tr></thead><tbody></tbody></table>
+      <th>Archetype</th><th>Action</th><th data-sort-key="goat">GOAT on BL</th><th data-sort-key="price">Price Adv. (₹/100g)</th></tr></thead><tbody></tbody></table>
     </div>`;
 
   document.getElementById('leaderboard').innerHTML = insightsHtml + tableHtml;
@@ -79,7 +86,7 @@ export function renderLeaderboard() {
     { key: 'city', sort: (a, b) => a.ADDRESS.localeCompare(b.ADDRESS) },
     { key: 'icp', sort: (a, b) => +a.icp_score - +b.icp_score },
     { key: 'goat', sort: (a, b) => goatRank(a) - goatRank(b) },
-    { key: 'price', sort: (a, b) => (num(a.price_advantage_blinkit) ?? -Infinity) - (num(b.price_advantage_blinkit) ?? -Infinity) },
+    { key: 'price', sort: (a, b) => (num(a.price_advantage_blinkit_per_100g) ?? -Infinity) - (num(b.price_advantage_blinkit_per_100g) ?? -Infinity) },
   ];
   wireSortableTable(document.getElementById('leaderboard-table'), restRanked, columns, renderTableRow);
 }
