@@ -129,7 +129,7 @@ export function hideProfile() {
   const src = map && map.getSource('coverage-ring');
   if (src) src.setData({ type: 'FeatureCollection', features: [] });
 }
-window.__hideLocalityProfile = hideProfile;
+if (typeof window !== 'undefined') window.__hideLocalityProfile = hideProfile;
 
 export function showProfile(p) {
   const panel = document.getElementById('profile');
