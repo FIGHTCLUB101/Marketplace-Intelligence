@@ -1,4 +1,6 @@
 import os
+import tempfile
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -17,7 +19,7 @@ def test_build_snapshot_rows_blinkit_platform():
         "City": "Bangalore", "Locality": "Indiranagar", "Brand Searched": "Yoga Bar Oats",
         "Product Name": "Yoga Bar 26% High Protein Oats", "Pack Size": "400 g",
         "Selling Price": "₹399", "MRP": "₹499", "Discount %": "20%",
-        "Stock Left": "N/A", "Rating": "4.2", "Serviceable": "Yes",
+        "Stock Left": "N/A", "Rating": "4.2", "Sponsored": "False", "Serviceable": "Yes",
     }])
     rows = build_snapshot_rows(df, "blinkit", loc_key_to_id={"bangalore|indiranagar": 5})
     assert len(rows) == 1
@@ -29,6 +31,50 @@ def test_build_snapshot_rows_blinkit_platform():
     assert row["mrp"] == 499.0
     assert row["discount_pct"] == 20.0
     assert row["is_goat"] is False
+    assert row["sponsored"] is False
+
+
+def test_build_snapshot_rows_blinkit_platform_captures_sponsored_intrusion():
+    # e.g. Alpino buying sponsored placement in a "Pintola Oats" search.
+    df = pd.DataFrame([{
+        "City": "Bangalore", "Locality": "Indiranagar", "Brand Searched": "Pintola Oats",
+        "Product Name": "Alpino High Protein Oats Chocolate 1 kg", "Pack Size": "1 kg",
+        "Selling Price": "₹448", "MRP": "₹549", "Discount %": "18%",
+        "Stock Left": "N/A", "Rating": "N/A", "Sponsored": "True", "Serviceable": "Yes",
+    }])
+    rows = build_snapshot_rows(df, "blinkit", loc_key_to_id={"bangalore|indiranagar": 5})
+    assert rows[0]["sponsored"] is True
+    assert rows[0]["brand_searched"] == "Pintola Oats"
+    assert rows[0]["product_name"] == "Alpino High Protein Oats Chocolate 1 kg"
+
+
+def test_build_snapshot_rows_handles_na_placeholder_via_real_xlsx_roundtrip():
+    # Regression test: pd.DataFrame([{"Stock Left": "N/A"}]) constructed
+    # directly in Python keeps "N/A" as a literal string, but a real
+    # pd.read_excel() round-trip (what every scraper's actual output goes
+    # through) silently converts "N/A" cells to a NaN float on read. Building
+    # the DataFrame directly here would not have caught the bug this
+    # regresses -- pack_size/stock_left/rating landing in the DB as the
+    # literal string "NaN" instead of NULL, because those three fields (unlike
+    # selling_price/mrp/discount_pct/sponsored/rank) had no NaN-aware cleanup.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        xlsx_path = Path(tmpdir) / "roundtrip.xlsx"
+        pd.DataFrame([{
+            "City": "Bangalore", "Locality": "Indiranagar", "Brand Searched": "Quaker Oats",
+            "Product Name": "Not Available", "Pack Size": "N/A", "Selling Price": "N/A",
+            "MRP": "N/A", "Discount %": "N/A", "Stock Left": "N/A", "Rating": "N/A",
+            "Sponsored": "N/A", "Serviceable": "Yes",
+        }]).to_excel(xlsx_path, index=False)
+
+        df = pd.read_excel(xlsx_path)
+        rows = build_snapshot_rows(df, "blinkit", loc_key_to_id={})
+        row = rows[0]
+        assert row["pack_size"] is None
+        assert row["stock_left"] is None
+        assert row["rating"] is None
+        assert row["selling_price"] is None
+        assert row["sponsored"] is None
+        assert row["product_name"] == "Not Available"  # meaningful sentinel text, not nulled
 
 
 def test_build_snapshot_rows_zepto_platform_splits_combined_locality():

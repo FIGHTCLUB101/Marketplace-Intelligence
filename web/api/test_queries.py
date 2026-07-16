@@ -6,7 +6,7 @@ from db import get_connection
 from queries import (
     compute_belts, fetch_brand_defence_rate, fetch_current_snapshot, fetch_drop_calendar,
     fetch_goat_coverage, fetch_latest_two_scrape_run_ids, fetch_shelf_trends, fetch_snapshot_rows,
-    fetch_visibility_rate,
+    fetch_sponsored_conquest_breadth, fetch_visibility_rate, identify_brand, sponsored_conquest_breadth,
 )
 
 requires_db = pytest.mark.skipif(
@@ -389,5 +389,92 @@ def test_fetch_shelf_trends_includes_goat_and_top_competitor():
         with conn.cursor() as cur:
             cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = ANY(%s)", (snapshot_ids,))
             cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = ANY(%s)", (run_ids,))
+        conn.commit()
+        conn.close()
+
+
+def test_identify_brand_matches_known_competitors():
+    assert identify_brand("Alpino High Protein Oats Chocolate 1 kg") == "Alpino"
+    assert identify_brand("Pintola Oats") == "Pintola"
+    assert identify_brand("The Whole Truth Rolled Oats") == "The Whole Truth"
+    assert identify_brand("Yoga Bar 26% High Protein Oats") == "Yoga Bar"
+
+
+def test_identify_brand_returns_none_for_unrecognized_brand():
+    assert identify_brand("GOAT Life High Protein Overnight Instant Oats") is None
+    assert identify_brand("Some Random Product") is None
+    assert identify_brand(None) is None
+
+
+def test_sponsored_conquest_breadth_counts_distinct_localities_per_intruder():
+    rows = [
+        # Alpino sponsored under "Pintola Oats" in two different localities
+        {"brand_searched": "Pintola Oats", "product_name": "Alpino High Protein Oats Chocolate",
+         "city_raw": "Bangalore", "locality_raw": "Indiranagar"},
+        {"brand_searched": "Pintola Oats", "product_name": "Alpino High Protein Oats Chocolate",
+         "city_raw": "Mumbai", "locality_raw": "Andheri West"},
+        # Yoga Bar sponsored under "Quaker Oats" in one locality
+        {"brand_searched": "Quaker Oats", "product_name": "Yoga Bar 26% High Protein Oats",
+         "city_raw": "Bangalore", "locality_raw": "Indiranagar"},
+    ]
+    result = sponsored_conquest_breadth(rows)
+    assert result == [
+        {"competitor": "Alpino", "locality_count": 2},
+        {"competitor": "Yoga Bar", "locality_count": 1},
+    ]
+
+
+def test_sponsored_conquest_breadth_excludes_own_brand_and_unrecognized():
+    rows = [
+        # Pintola's own product sponsored under its own search -- not an intrusion
+        {"brand_searched": "Pintola Oats", "product_name": "Pintola High Protein Oats",
+         "city_raw": "Bangalore", "locality_raw": "Indiranagar"},
+        # Product brand not in our tracked set
+        {"brand_searched": "Pintola Oats", "product_name": "Some Random Oats Brand",
+         "city_raw": "Bangalore", "locality_raw": "Indiranagar"},
+    ]
+    assert sponsored_conquest_breadth(rows) == []
+
+
+@requires_db
+def test_fetch_sponsored_conquest_breadth_reads_live_rows():
+    conn = get_connection()
+    scrape_run_id = None
+    snapshot_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_conquest", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            rows_to_insert = [
+                # Alpino sponsored under Pintola's search -- a real intrusion
+                ("Pintola Oats", "Alpino High Protein Oats Chocolate", True, False),
+                # Pintola's own sponsored row -- not an intrusion
+                ("Pintola Oats", "Pintola High Protein Oats", True, False),
+                # Unsponsored Alpino row under Pintola's search -- not counted
+                ("Pintola Oats", "Alpino High Protein Muesli", False, False),
+            ]
+            for brand_searched, product_name, sponsored, is_goat in rows_to_insert:
+                cur.execute(
+                    "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                    "brand_searched, product_name, rank, selling_price, sponsored, is_goat) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                    (scrape_run_id, "test_platform_xyz_conquest", "TestCityXYZ", "TestLocalityXYZ",
+                     brand_searched, product_name, 1, 199.0, sponsored, is_goat),
+                )
+                snapshot_ids.append(cur.fetchone()[0])
+        conn.commit()
+
+        result = fetch_sponsored_conquest_breadth(conn, scrape_run_id)
+        assert result == [{"competitor": "Alpino", "locality_count": 1}]
+    finally:
+        with conn.cursor() as cur:
+            for sid in snapshot_ids:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (sid,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
         conn.commit()
         conn.close()

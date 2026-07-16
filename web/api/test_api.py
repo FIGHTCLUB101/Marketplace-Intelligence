@@ -565,3 +565,57 @@ def test_get_shelf_visibility_rate_computes_percentage():
                 cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
         conn.commit()
         conn.close()
+
+
+@requires_db
+def test_get_sponsored_conquest_breadth_returns_empty_for_platform_with_no_runs():
+    response = client.get("/api/shelf/sponsored-conquest-breadth?platform=test_platform_xyz_empty_conquest")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+@requires_db
+def test_get_sponsored_conquest_breadth_ranks_intruders_by_locality_count():
+    conn = get_connection()
+    scrape_run_id = None
+    snapshot_ids = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_conquest_api", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            rows_to_insert = [
+                ("Pintola Oats", "Alpino High Protein Oats Chocolate", "TestCityXYZ", "TestLocalityXYZ"),
+                ("Pintola Oats", "Alpino High Protein Oats Chocolate", "TestCityXYZ", "OtherLocalityXYZ"),
+                ("Quaker Oats", "Yoga Bar 26% High Protein Oats", "TestCityXYZ", "TestLocalityXYZ"),
+            ]
+            for brand_searched, product_name, city, locality in rows_to_insert:
+                cur.execute(
+                    "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                    "brand_searched, product_name, rank, selling_price, sponsored, is_goat) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                    (scrape_run_id, "test_platform_xyz_conquest_api", city, locality,
+                     brand_searched, product_name, 1, 199.0, True, False),
+                )
+                snapshot_ids.append(cur.fetchone()[0])
+        conn.commit()
+
+        response = client.get(
+            "/api/shelf/sponsored-conquest-breadth?platform=test_platform_xyz_conquest_api"
+        )
+        assert response.status_code == 200
+        assert response.json() == [
+            {"competitor": "Alpino", "locality_count": 2},
+            {"competitor": "Yoga Bar", "locality_count": 1},
+        ]
+    finally:
+        with conn.cursor() as cur:
+            for sid in snapshot_ids:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (sid,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()

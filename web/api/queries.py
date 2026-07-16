@@ -349,3 +349,75 @@ def fetch_shelf_trends(conn, platform, top_n=3):
         for name, week_data in data_by_name.items()
     ]
     return {"platform": platform, "weeks": weeks, "series": series}
+
+
+# Ordered so multi-word/more-specific keywords are checked before shorter,
+# more generic ones -- mirrors scraper/blinkit_oats.py's get_brand_keyword(),
+# which every 4 scrapers' BRANDS lists are built from.
+_COMPETITOR_BRAND_KEYWORDS = [
+    ("The Whole Truth", "whole truth"),
+    ("Yoga Bar", "yoga"),
+    ("True Elements", "true"),
+    ("Pintola", "pintola"),
+    ("Quaker", "quaker"),
+    ("MuscleBlaze", "muscleblaze"),
+    ("Alpino", "alpino"),
+    ("Saffola", "saffola"),
+    ("Cosmix", "cosmix"),
+    ("SuperYou", "superyou"),
+]
+
+
+def identify_brand(name):
+    """Returns which of the 10 tracked competitor brands owns this product
+    (matched by keyword against the product name), or None if it's not a
+    recognized competitor brand. name may be a product_name (e.g. "Alpino
+    High Protein Oats Chocolate 1 kg") or a brand_searched value (e.g.
+    "Pintola Oats") -- both match the same way."""
+    name_lower = (name or "").lower()
+    for display_name, keyword in _COMPETITOR_BRAND_KEYWORDS:
+        if keyword in name_lower:
+            return display_name
+    return None
+
+
+def sponsored_conquest_breadth(rows):
+    """rows: [{"brand_searched", "product_name", "city_raw", "locality_raw"}, ...]
+    for sponsored, non-GOAT shelf_snapshots rows from one scrape_run.
+    Identifies each sponsored product's own brand and keeps only genuine
+    cross-brand intrusions -- a different competitor buying paid placement
+    in another brand's search (e.g. Alpino sponsored under "Pintola Oats")
+    -- then counts the distinct localities each intruding brand appears in.
+
+    Returns [{"competitor": name, "locality_count": n}, ...] sorted by
+    locality_count descending -- the same shape as
+    shelf_changes.conquest_breadth(), so the frontend's existing
+    renderConquestBreadth() can render this without any changes."""
+    localities_by_brand = {}
+    for r in rows:
+        searched_brand = identify_brand(r["brand_searched"])
+        product_brand = identify_brand(r["product_name"])
+        if product_brand is None or product_brand == searched_brand:
+            continue
+        localities_by_brand.setdefault(product_brand, set()).add((r["city_raw"], r["locality_raw"]))
+    return sorted(
+        [{"competitor": name, "locality_count": len(locs)} for name, locs in localities_by_brand.items()],
+        key=lambda x: -x["locality_count"],
+    )
+
+
+SPONSORED_INTRUSION_ROWS_SQL = """
+    SELECT brand_searched, product_name, city_raw, locality_raw
+    FROM shelf_snapshots
+    WHERE scrape_run_id = %s AND sponsored = true AND NOT is_goat
+      AND brand_searched IS NOT NULL AND product_name IS NOT NULL
+"""
+
+
+def fetch_sponsored_conquest_breadth(conn, scrape_run_id):
+    """Fetches sponsored, non-GOAT rows for one run and reduces them to a
+    conquest-breadth ranking via sponsored_conquest_breadth()."""
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(SPONSORED_INTRUSION_ROWS_SQL, (scrape_run_id,))
+        rows = cur.fetchall()
+    return sponsored_conquest_breadth(rows)

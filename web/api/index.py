@@ -189,3 +189,15 @@ def get_shelf_visibility_rate(platform: str = Query(...)):
         return {"platform": platform, "visibility_rate": queries.fetch_visibility_rate(conn, newest_id)}
     finally:
         conn.close()
+
+
+@app.get("/api/shelf/sponsored-conquest-breadth", response_model=list[CompetitorBreadth])
+def get_sponsored_conquest_breadth(platform: str = Query(default="blinkit")):
+    conn = get_connection()
+    try:
+        newest_id, _ = queries.fetch_latest_two_scrape_run_ids(conn, platform)
+        if newest_id is None:
+            return []
+        return queries.fetch_sponsored_conquest_breadth(conn, newest_id)
+    finally:
+        conn.close()

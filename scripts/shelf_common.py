@@ -44,3 +44,16 @@ def to_bool(value):
     if s == "false":
         return False
     return None
+
+
+def to_str(value):
+    """Cleans a free-text scraped field. Handles two distinct "empty" shapes:
+    a real None, and pandas silently converting an "N/A"-style xlsx cell into
+    a NaN float on read (str(float('nan')) == "nan") -- both become None
+    rather than the literal string "N/A"/"NaN" landing in the database."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if s.lower() in ("", "n/a", "nan", "none", "null", "<na>"):
+        return None
+    return s

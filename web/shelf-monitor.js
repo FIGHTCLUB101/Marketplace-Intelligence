@@ -221,7 +221,7 @@ const COMPETITOR_BRANDS = [
   'The Whole Truth', 'True Elements', 'Yoga Bar',
 ];
 
-const compareState = { snapshots: {}, coverage: {}, visibilityRates: {} };
+const compareState = { snapshots: {}, coverage: {}, visibilityRates: {}, conquestBreadth: {} };
 
 async function fetchBrandSnapshot(platform, brand) {
   const key = `${platform}|||${brand}`;
@@ -246,6 +246,14 @@ async function fetchVisibilityRate(platform) {
     compareState.visibilityRates[platform] = body.visibility_rate;
   }
   return compareState.visibilityRates[platform];
+}
+
+async function fetchConquestBreadth(platform) {
+  if (!compareState.conquestBreadth[platform]) {
+    compareState.conquestBreadth[platform] =
+      await fetchJson(`/api/shelf/sponsored-conquest-breadth?platform=${platform}`);
+  }
+  return compareState.conquestBreadth[platform];
 }
 
 function headlineStatRow() {
@@ -306,6 +314,7 @@ async function renderCompareBrands(el) {
       </div>
     </div>
     <p class="info">"Brand" is the search term used to scrape Blinkit — the table below shows every product that appeared in results for that search (including competitors), not just the brand's own listings. Check the box to narrow to the brand's own products only.</p>
+    <div class="conquest-breadth"></div>
     <div class="compare-table"><p class="info">Select a platform to see current shelf data.</p></div>`;
 
   const platformSel = el.querySelector('.f-cmp-platform');
@@ -333,13 +342,17 @@ async function renderCompareBrands(el) {
     }
     table.innerHTML = '<p class="info">Loading…</p>';
     try {
-      const [rows] = await Promise.all([
+      const [rows, , , conquestBreadth] = await Promise.all([
         fetchBrandSnapshot(platform, brand),
         fetchGoatCoverage(platform),
         fetchVisibilityRate(platform),
+        fetchConquestBreadth(platform),
       ]);
       if (activeSubtabId !== myId || platformSel.value !== platform || brandSel.value !== brand) return;
       el.querySelector('.visibility-row').outerHTML = headlineStatRow();
+      el.querySelector('.conquest-breadth').innerHTML = conquestBreadth.length ? `
+        <p class="info">Which competitors buy sponsored ("Ad") placement in <em>other</em> brands' searches on this platform, and how many localities that shows up in.</p>
+        ${renderConquestBreadth(conquestBreadth)}` : '';
       fillCompareCityLocality(citySel, localitySel, rows, rerenderTable);
     } catch (e) {
       if (activeSubtabId !== myId || platformSel.value !== platform || brandSel.value !== brand) return;

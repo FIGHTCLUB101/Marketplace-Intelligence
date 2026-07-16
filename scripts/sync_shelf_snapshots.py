@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import psycopg2.extras
 
-from shelf_common import compute_loc_key, is_goat_brand, to_bool, to_float, to_int
+from shelf_common import compute_loc_key, is_goat_brand, to_bool, to_float, to_int, to_str
 
 # Maps our DB column name -> the source xlsx column name for each platform.
 # None means the platform's scraper doesn't capture that field.
@@ -18,13 +18,13 @@ PLATFORM_COLUMNS = {
         "brand_searched": "Brand Searched", "rank": None, "product_name": "Product Name",
         "pack_size": "Pack Size", "selling_price": "Selling Price", "mrp": "MRP",
         "discount_pct": "Discount %", "stock_left": "Stock Left", "rating": "Rating",
-        "reviews": None, "sponsored": None, "serviceable": "Serviceable",
+        "reviews": None, "sponsored": "Sponsored", "serviceable": "Serviceable",
     },
     "blinkit_goatlife": {
         "brand_searched": "Search Term", "rank": "Rank", "product_name": "Product Name",
         "pack_size": "Pack Size", "selling_price": "Selling Price", "mrp": "MRP",
         "discount_pct": "Discount %", "stock_left": "Stock Left", "rating": "Rating",
-        "reviews": None, "sponsored": None, "serviceable": "Serviceable",
+        "reviews": None, "sponsored": "Sponsored", "serviceable": "Serviceable",
     },
     "swiggy": {
         "brand_searched": "Brand Searched", "rank": None, "product_name": "Product Name",
@@ -68,13 +68,13 @@ def build_snapshot_rows(df: pd.DataFrame, platform: str, loc_key_to_id: dict) ->
             "brand_searched": r.get(col_map["brand_searched"]) if col_map["brand_searched"] else None,
             "rank": to_int(r.get(col_map["rank"])) if col_map["rank"] else None,
             "product_name": product_name,
-            "pack_size": r.get(col_map["pack_size"]) if col_map["pack_size"] else None,
+            "pack_size": to_str(r.get(col_map["pack_size"])) if col_map["pack_size"] else None,
             "selling_price": to_float(r.get(col_map["selling_price"])) if col_map["selling_price"] else None,
             "mrp": to_float(r.get(col_map["mrp"])) if col_map["mrp"] else None,
             "discount_pct": to_float(r.get(col_map["discount_pct"])) if col_map["discount_pct"] else None,
-            "stock_left": r.get(col_map["stock_left"]) if col_map["stock_left"] else None,
-            "rating": r.get(col_map["rating"]) if col_map["rating"] else None,
-            "reviews": r.get(col_map["reviews"]) if col_map["reviews"] else None,
+            "stock_left": to_str(r.get(col_map["stock_left"])) if col_map["stock_left"] else None,
+            "rating": to_str(r.get(col_map["rating"])) if col_map["rating"] else None,
+            "reviews": to_str(r.get(col_map["reviews"])) if col_map["reviews"] else None,
             "sponsored": to_bool(r.get(col_map["sponsored"])) if col_map["sponsored"] else None,
             "serviceable": r.get(col_map["serviceable"]) if col_map["serviceable"] else None,
             "is_goat": is_goat_brand(product_name) if product_name else False,

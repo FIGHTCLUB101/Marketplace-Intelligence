@@ -137,6 +137,17 @@ push = master[master["gtm_action"] == "PUSH-NOW"]
 matched_bl = int(master["blinkit_n_competitor_brands"].notna().sum())
 
 print(f"\n{'='*55}")
+def format_price_advantage(value):
+    """Rs.X/100g cheaper|pricier framing for the console report -- avoids
+    hardcoding "cheaper" regardless of sign (this ratio can and does go
+    negative in real data, meaning GOAT is pricier per 100g, not cheaper),
+    and avoids printing the literal text "nan" when no localities in this
+    run matched the master parquet (mean of an all-NaN column)."""
+    if pd.isna(value):
+        return "no data (no localities in this run matched the master parquet)"
+    return f"Rs.{abs(value):.1f}/100g {'cheaper' if value >= 0 else 'pricier'} than competitor avg"
+
+
 print(f"Parquet enriched  : {len(master)} localities")
 print(f"Blinkit coverage  : {matched_bl} localities matched")
 print(f"GOAT Rs./100g     : Blinkit={goat_bl_price_per_100g}  Zepto={goat_zt_price_per_100g}")
@@ -144,11 +155,9 @@ print(f"\nPUSH-NOW localities ({len(push)} total):")
 print(f"  GOAT on Blinkit : {int(push['blinkit_goat_present'].sum())}")
 print(f"  GOAT on Zepto   : {int(push['zepto_goat_present'].sum())}")
 print(f"  White space     : {int(push['is_white_space'].sum())} (no competitors on BL or Zepto)")
-bl_adv = push["price_advantage_blinkit_per_100g"].mean()
-print(f"  Avg price adv.  : Rs.{bl_adv:.1f}/100g cheaper than competitor avg on Blinkit")
+print(f"  Avg price adv.  : {format_price_advantage(push['price_advantage_blinkit_per_100g'].mean())}")
 print(f"\nAll localities:")
 print(f"  White space     : {int(master['is_white_space'].sum())}")
-all_adv = master["price_advantage_blinkit_per_100g"].mean()
-print(f"  Avg price adv.  : Rs.{all_adv:.1f}/100g")
+print(f"  Avg price adv.  : {format_price_advantage(master['price_advantage_blinkit_per_100g'].mean())}")
 print(f"{'='*55}")
 print("\nDone. Now run: python scripts/build_locality_data.py")
