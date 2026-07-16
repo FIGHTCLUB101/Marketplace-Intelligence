@@ -22,3 +22,5 @@ scraper/output/*.xlsx
 
 # Claude Code harness scratch state (worktrees, session data) — never source
 .claude/
+.vercel
+.env*
