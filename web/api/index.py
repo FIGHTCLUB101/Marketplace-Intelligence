@@ -5,11 +5,18 @@ rewrites /api/* to this file. Run locally with:
     cd web/api && uvicorn index:app --reload
 """
 import logging
+import os
+import sys
 from typing import Optional
 
 import psycopg2.errors
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
+
+# vercel dev's Python runtime imports this file by path without adding its
+# own directory to sys.path, so sibling modules (queries, shelf_changes,
+# db, models) 404 with ModuleNotFoundError unless we add it ourselves.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import queries
 import shelf_changes
