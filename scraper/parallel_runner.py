@@ -36,6 +36,10 @@ SCRAPER_CONFIGS = {
         "build_localities": lambda mod: mod.load_localities(str(mod.MAGICBRICKS_FILE)),
         "make_sort_key_fn": lambda mod, localities: mod.make_sort_key_fn(localities),
     },
+    "swiggy_oats": {
+        "build_localities": lambda mod: mod.build_target_localities(),
+        "make_sort_key_fn": lambda mod, localities: mod.make_sort_key_fn(localities),
+    },
 }
 
 

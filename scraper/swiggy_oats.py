@@ -22,7 +22,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 
 from _reliability import (
     IncrementalWorkbook, defeat_visibility_throttling, is_dead_session_error,
-    jittered_sleep, keep_window_unminimized, should_restart_driver,
+    jittered_sleep, keep_window_unminimized, shard_localities, should_restart_driver,
     wait_for_manual_unblock,
 )
 
@@ -392,12 +392,7 @@ def not_available_row(city, locality, brand, reason="Not Available"):
     }
 
 # ─────────────────────────────────────────────
-def main():
-    print("="*65, flush=True)
-    print("  SWIGGY INSTAMART OATS SCRAPER — Starting", flush=True)
-    print("  If CAPTCHA appears, solve it in the browser!", flush=True)
-    print("="*65, flush=True)
-
+def build_target_localities():
     df_mb = pd.read_excel(MAGICBRICKS_FILE)
     df_mb['avg_buy_price'] = df_mb['price range(for residential, office space, shop)'].apply(extract_buy_price)
 
@@ -411,10 +406,41 @@ def main():
         for _, row in top.iterrows():
             area = str(row['AREA']).split(',')[0].strip()
             target_localities.append({'locality': area, 'city': city, 'price': row['avg_buy_price']})
+    return target_localities
+
+
+def make_sort_key_fn(target_localities):
+    """Ranks a merged row the same way the sequential scraper already
+    orders its output -- by locality's position in target_localities, then
+    brand's position in BRANDS -- so parallel_runner.py's periodic merge
+    produces a file that reads identically to a single-worker run,
+    regardless of which shard actually scraped which row."""
+    locality_rank = {(loc['city'], loc['locality']): i for i, loc in enumerate(target_localities)}
+    brand_rank = {b: i for i, b in enumerate(BRANDS)}
+
+    def sort_key(row):
+        loc_rank = locality_rank.get((row.get('City'), row.get('Locality')), len(locality_rank))
+        b_rank = brand_rank.get(row.get('Brand Searched'), len(brand_rank))
+        return (loc_rank, b_rank)
+
+    return sort_key
+
+
+# ─────────────────────────────────────────────
+def main(target_localities=None, output_file=None):
+    print("="*65, flush=True)
+    print("  SWIGGY INSTAMART OATS SCRAPER — Starting", flush=True)
+    print("  If CAPTCHA appears, solve it in the browser!", flush=True)
+    print("="*65, flush=True)
+
+    if target_localities is None:
+        target_localities = build_target_localities()
+    if output_file is None:
+        output_file = OUTPUT_FILE
 
     print(f"\n📋 Localities: {len(target_localities)} | Brands: {len(BRANDS)} | Est. searches: {len(target_localities)*len(BRANDS)}", flush=True)
 
-    wb = IncrementalWorkbook(OUTPUT_FILE, columns=COLUMNS)
+    wb = IncrementalWorkbook(output_file, columns=COLUMNS)
     done_keys = wb.done_keys(["City", "Locality", "Brand Searched"])
     if done_keys:
         print(f"📂 Resuming — {len(done_keys)} (locality, brand) pairs already saved.", flush=True)
@@ -500,7 +526,7 @@ def main():
         print("\n⛔ Stopped by user.", flush=True)
     finally:
         wb.save()
-        print(f"\n✅ Final save → {OUTPUT_FILE}", flush=True)
+        print(f"\n✅ Final save → {output_file}", flush=True)
         try: driver.quit()
         except: pass
 
@@ -509,4 +535,21 @@ def main():
     print("="*65, flush=True)
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--shard-index", type=int, default=None,
+                         help="This worker's shard number (0-based). Required with --num-shards > 1.")
+    parser.add_argument("--num-shards", type=int, default=1,
+                         help="Total number of shards. Omit (or 1) to scrape all 500 localities normally.")
+    args = parser.parse_args()
+
+    if args.num_shards > 1:
+        if args.shard_index is None:
+            parser.error("--shard-index is required when --num-shards > 1")
+        all_localities = build_target_localities()
+        shard = shard_localities(all_localities, args.shard_index, args.num_shards)
+        shard_output = ROOT / "scraper" / "output" / "_shards" / f"swiggy_oats_shard{args.shard_index}.xlsx"
+        main(target_localities=shard, output_file=shard_output)
+    else:
+        main()
