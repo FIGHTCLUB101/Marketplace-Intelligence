@@ -288,7 +288,19 @@ def scrape_brand(driver, brand, locality, city):
                 rm = re.search(r'(\d\.\d)\s*\(', ct)
                 if rm and 1.0 <= float(rm.group(1)) <= 5.0: rating = rm.group(1)
 
-                img_srcs = [img.get_attribute("src") for img in card.find_elements(By.TAG_NAME, "img")]
+                # The "Ad" badge image lives outside the 3-level card boundary
+                # above (which is deliberately tight so card.text doesn't pick
+                # up neighboring cards) -- confirmed live via DOM trace on
+                # blinkit_oats.py's identical card structure: from the ADD
+                # button, the badge only enters scope 5 levels up, not 3.
+                # Widen just for this lookup; if the extra walk fails for any
+                # reason, fall back to the tighter (badge-blind) scope rather
+                # than erroring the whole card out.
+                try:
+                    sponsor_scope = card.find_element(By.XPATH, "./../..")
+                except Exception:
+                    sponsor_scope = card
+                img_srcs = [img.get_attribute("src") for img in sponsor_scope.find_elements(By.TAG_NAME, "img")]
                 sponsored = "True" if has_sponsored_badge(img_srcs) else "False"
 
                 products.append({
