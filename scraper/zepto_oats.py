@@ -23,7 +23,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from _reliability import (
     IncrementalWorkbook, defeat_visibility_throttling, is_blocked,
     is_dead_session_error, jittered_sleep, keep_window_unminimized,
-    should_restart_driver, wait_for_manual_unblock,
+    shard_localities, should_restart_driver, wait_for_manual_unblock,
 )
 
 # ─────────────────────────────────────────────
@@ -72,6 +72,22 @@ def load_localities(filepath):
     except Exception as e:
         print(f"Error reading {filepath}: {e}")
         return []
+
+def make_sort_key_fn(localities):
+    """Ranks a merged row the same way the sequential scraper already
+    orders its output -- by locality's position in `localities`, then
+    brand's position in BRANDS -- so parallel_runner.py's periodic merge
+    produces a file that reads identically to a single-worker run,
+    regardless of which shard actually scraped which row."""
+    locality_rank = {loc['loc_str']: i for i, loc in enumerate(localities)}
+    brand_rank = {b: i for i, b in enumerate(BRANDS)}
+
+    def sort_key(row):
+        loc_rank = locality_rank.get(row.get('Locality'), len(locality_rank))
+        b_rank = brand_rank.get(row.get('Brand Searched'), len(brand_rank))
+        return (loc_rank, b_rank)
+
+    return sort_key
 
 def parse_zepto_card(card_text):
     parts = [p.strip() for p in card_text.split('|') if p.strip()]
@@ -314,20 +330,23 @@ def not_available_row(loc_str, brand, reason="Location Error"):
     }
 
 # ─────────────────────────────────────────────
-def scrape_zepto():
+def scrape_zepto(localities=None, output_file=None):
     print("=================================================================", flush=True)
     print("  ZEPTO INSTAMART OATS SCRAPER - Starting", flush=True)
     print("  If CAPTCHA appears, solve it in the browser!", flush=True)
     print("=================================================================\n", flush=True)
 
-    localities = load_localities(str(MAGICBRICKS_FILE))
+    if localities is None:
+        localities = load_localities(str(MAGICBRICKS_FILE))
+    if output_file is None:
+        output_file = OUTPUT_FILE
     if not localities:
         print("No localities found. Exiting.", flush=True)
         return
 
     print(f"📋 Localities: {len(localities)} | Brands: {len(BRANDS)} | Est. searches: {len(localities)*len(BRANDS)}\n", flush=True)
 
-    wb = IncrementalWorkbook(OUTPUT_FILE, columns=COLUMNS)
+    wb = IncrementalWorkbook(output_file, columns=COLUMNS)
     done_keys = wb.done_keys(["Locality", "Brand Searched"])
     if done_keys:
         print(f"📂 Resuming — {len(done_keys)} (locality, brand) pairs already saved.", flush=True)
@@ -417,7 +436,7 @@ def scrape_zepto():
         print("\n⛔ Stopped by user.", flush=True)
     finally:
         wb.save()
-        print(f"\n✅ Final save → {OUTPUT_FILE}", flush=True)
+        print(f"\n✅ Final save → {output_file}", flush=True)
         try: driver.quit()
         except: pass
 
@@ -426,4 +445,21 @@ def scrape_zepto():
     print("="*65, flush=True)
 
 if __name__ == "__main__":
-    scrape_zepto()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--shard-index", type=int, default=None,
+                         help="This worker's shard number (0-based). Required with --num-shards > 1.")
+    parser.add_argument("--num-shards", type=int, default=1,
+                         help="Total number of shards. Omit (or 1) to scrape all 500 localities normally.")
+    args = parser.parse_args()
+
+    if args.num_shards > 1:
+        if args.shard_index is None:
+            parser.error("--shard-index is required when --num-shards > 1")
+        all_localities = load_localities(str(MAGICBRICKS_FILE))
+        shard = shard_localities(all_localities, args.shard_index, args.num_shards)
+        shard_output = ROOT / "scraper" / "output" / "_shards" / f"zepto_oats_shard{args.shard_index}.xlsx"
+        scrape_zepto(localities=shard, output_file=shard_output)
+    else:
+        scrape_zepto()
