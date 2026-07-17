@@ -1,4 +1,4 @@
-from swiggy_oats import is_oats_product, parse_card_block
+from swiggy_oats import get_brand_keyword, is_goat_product, is_oats_product, parse_card_block
 
 
 def test_parse_card_block_extracts_name_price_and_pack_size():
@@ -37,3 +37,24 @@ def test_is_oats_product_true_for_oats_names():
 
 def test_is_oats_product_false_for_non_oats_names():
     assert is_oats_product("Pintola All Natural Crunchy Peanut Butter") is False
+
+
+def test_get_brand_keyword_special_cases():
+    assert get_brand_keyword("The Whole Truth Oats") == "whole truth"
+    assert get_brand_keyword("Yoga Bar Oats") == "yoga"
+    assert get_brand_keyword("True Elements Oats") == "true"
+
+
+def test_get_brand_keyword_default_first_word():
+    assert get_brand_keyword("Quaker Oats") == "quaker"
+    assert get_brand_keyword("Saffola Oats") == "saffola"
+
+
+def test_is_goat_product_matches_case_insensitively():
+    assert is_goat_product("GOAT Life High Protein Overnight Instant Oats") is True
+    assert is_goat_product("goat life choco-nut crunch") is True
+
+
+def test_is_goat_product_false_for_competitor_names():
+    assert is_goat_product("Pintola High Protein Oats") is False
+    assert is_goat_product("Yoga Bar Protein Oats") is False

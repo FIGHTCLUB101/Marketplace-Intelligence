@@ -255,6 +255,22 @@ def is_oats_product(name):
     oats-category data only, so those get dropped regardless of brand."""
     return "oat" in name.lower()
 
+def get_brand_keyword(brand):
+    """Returns the primary keyword to verify a product matches the searched brand."""
+    b = brand.lower()
+    if 'the whole truth' in b: return 'whole truth'
+    if 'yoga bar' in b: return 'yoga'
+    if 'true elements' in b: return 'true'
+    return b.split(' ')[0]
+
+def is_goat_product(name):
+    """True if this product listing is GOAT Life's own product. Kept
+    regardless of which competitor brand was searched -- a GOAT Life listing
+    showing up under a competitor's search is a genuine, valuable conquest/
+    intrusion signal, not noise to be filtered out the same way an unrelated
+    substitute is."""
+    return "goat life" in name.lower()
+
 # ─────────────────────────────────────────────
 def scrape_brand(driver, brand, locality, city):
     products = []
@@ -264,7 +280,13 @@ def scrape_brand(driver, brand, locality, city):
         if not wait_for_manual_unblock(driver, beep):
             print("  ⚠️  Still blocked after waiting — continuing anyway.", flush=True)
 
-        for _ in range(4):
+        # 4 scrolls (3200px) routinely stopped short of the page's real card
+        # count -- confirmed live: 77% of searches hit the old flat 15-item
+        # cap below, and the GOAT Life conquest signal (present on Swiggy per
+        # a live product-page check) never appeared once in 59,211 scraped
+        # rows. Doubling scroll depth surfaces more of the page before the
+        # per-category caps start being enforced.
+        for _ in range(8):
             driver.execute_script("window.scrollBy(0, 800);")
             time.sleep(1)
 
@@ -287,10 +309,23 @@ def scrape_brand(driver, brand, locality, city):
 
         print(f"    🔍 '{brand}': {len(cards)} card block(s) found on page", flush=True)
 
-        variants_added = 0
+        keyword = get_brand_keyword(brand)
+        # own_variants_added, goat_variants_added, and intruder_variants_added
+        # are capped independently (3 each) so none of the three categories
+        # can starve out another by filling a shared slot budget first -- this
+        # was the actual bug behind GOAT never appearing: a flat shared cap of
+        # 15, consumed in raw page order, meant whichever ~15 oats products
+        # Swiggy's own search relevance happened to surface first (frequently
+        # not including GOAT Life at all -- confirmed live, 77% of searches
+        # hit that cap) silently crowded out everything else.
+        own_variants_added = 0
+        goat_variants_added = 0
+        intruder_variants_added = 0
 
         for card in cards:
-            if variants_added >= 15: break
+            if (own_variants_added >= 3 and goat_variants_added >= 3        # STRICTLY MAX 3 VARIANTS EACH
+                    and intruder_variants_added >= 3):
+                break
 
             try:
                 ct = card.text
@@ -299,8 +334,30 @@ def scrape_brand(driver, brand, locality, city):
                 parsed_prods = parse_card_block(ct)
 
                 for p in parsed_prods:
-                    if variants_added >= 15: break
                     if not is_oats_product(p['name']): continue
+
+                    is_own = keyword in p['name'].lower()
+                    is_goat = is_goat_product(p['name'])
+                    is_sponsored = p['sponsored'] == "True"
+                    # A sponsored product that's neither the searched brand nor GOAT is a
+                    # different competitor paying for placement in this brand's search --
+                    # e.g. Alpino buying an ad slot when someone searches "Pintola Oats".
+                    is_intruder = not is_own and not is_goat and is_sponsored
+
+                    # Keep the searched brand's own products, GOAT Life rows
+                    # (conquest signal), and sponsored competitor intrusions.
+                    # Organic, unsponsored cross-brand matches -- Swiggy's own
+                    # "similar products" noise, which is what was drowning out
+                    # GOAT under the old shared cap -- are dropped as not
+                    # relevant to any of the three signals this scraper tracks.
+                    if not is_own and not is_goat and not is_intruder:
+                        continue
+                    if is_own and own_variants_added >= 3:
+                        continue
+                    if is_goat and goat_variants_added >= 3:
+                        continue
+                    if is_intruder and intruder_variants_added >= 3:
+                        continue
 
                     products.append({
                         "City": city, "Locality": locality, "Brand Searched": brand,
@@ -311,10 +368,12 @@ def scrape_brand(driver, brand, locality, city):
 
                     sponsored_marker = "[SPONS]" if p['sponsored'] == "True" else ""
                     print(f"    ✅ {p['name'][:25]:<25} {sponsored_marker:<10} {p['sp']} (MRP:{p['mrp']})", flush=True)
-                    variants_added += 1
+                    if is_own: own_variants_added += 1
+                    if is_goat: goat_variants_added += 1
+                    if is_intruder: intruder_variants_added += 1
             except: pass
 
-        if variants_added == 0:
+        if own_variants_added == 0 and goat_variants_added == 0 and intruder_variants_added == 0:
             print(f"    ⚪ No matching variants found for '{brand}'", flush=True)
 
     except Exception as e:
