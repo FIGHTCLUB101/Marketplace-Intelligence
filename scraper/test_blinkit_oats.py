@@ -1,5 +1,6 @@
 from blinkit_oats import (
-    extract_buy_price, get_brand_keyword, has_sponsored_badge, is_goat_product, is_oats_product,
+    BRANDS, build_target_localities, extract_buy_price, get_brand_keyword,
+    has_sponsored_badge, is_goat_product, is_oats_product, make_sort_key_fn,
 )
 
 
@@ -63,3 +64,43 @@ def test_is_oats_product_false_for_non_oats_names():
     # Confirmed real case: a "Pintola oats" search on Blinkit still surfaced
     # this non-oats product from the same brand.
     assert is_oats_product("Pintola All Natural Crunchy Peanut Butter") is False
+
+
+def test_build_target_localities_covers_all_cities_at_top_n():
+    localities = build_target_localities()
+    assert len(localities) > 0
+    for loc in localities:
+        assert set(loc.keys()) == {"locality", "city", "price"}
+    cities = {loc["city"] for loc in localities}
+    assert len(cities) == 10  # matches data/magicbricks_combined.xlsx's 10 cities
+    for city in cities:
+        assert sum(1 for loc in localities if loc["city"] == city) == 50
+
+
+def test_make_sort_key_fn_orders_by_locality_rank_then_brand_rank():
+    target_localities = [
+        {"locality": "Indiranagar", "city": "Bangalore", "price": 26750},
+        {"locality": "Koramangala", "city": "Bangalore", "price": 21450},
+    ]
+    sort_key = make_sort_key_fn(target_localities)
+
+    rows = [
+        {"City": "Bangalore", "Locality": "Koramangala", "Brand Searched": BRANDS[0]},
+        {"City": "Bangalore", "Locality": "Indiranagar", "Brand Searched": BRANDS[1]},
+        {"City": "Bangalore", "Locality": "Indiranagar", "Brand Searched": BRANDS[0]},
+    ]
+    ordered = sorted(rows, key=sort_key)
+
+    assert ordered == [
+        {"City": "Bangalore", "Locality": "Indiranagar", "Brand Searched": BRANDS[0]},
+        {"City": "Bangalore", "Locality": "Indiranagar", "Brand Searched": BRANDS[1]},
+        {"City": "Bangalore", "Locality": "Koramangala", "Brand Searched": BRANDS[0]},
+    ]
+
+
+def test_make_sort_key_fn_puts_unknown_rows_last():
+    target_localities = [{"locality": "Indiranagar", "city": "Bangalore", "price": 26750}]
+    sort_key = make_sort_key_fn(target_localities)
+    known = {"City": "Bangalore", "Locality": "Indiranagar", "Brand Searched": BRANDS[0]}
+    unknown = {"City": "Delhi", "Locality": "Saket", "Brand Searched": "Nonexistent Brand"}
+    assert sort_key(known) < sort_key(unknown)
