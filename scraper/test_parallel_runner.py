@@ -56,3 +56,41 @@ def test_wait_for_ram_never_raises_if_check_fn_fails():
     def broken():
         raise RuntimeError("psutil not installed")
     pr.wait_for_ram(min_mb=100, check_fn=broken, sleep_fn=lambda s: None)  # must not raise
+
+
+def test_run_worker_pool_gives_up_after_max_restarts():
+    launches = []
+
+    class AlwaysCrashingPopen:
+        def poll(self):
+            return 1  # always reports "crashed"
+
+        def terminate(self):
+            pass
+
+    def fake_popen_fn(args, **kwargs):
+        launches.append(args)
+        return AlwaysCrashingPopen()
+
+    merges = []
+
+    def fake_merge_fn(shard_paths, output_path, columns, sort_key_fn):
+        merges.append(1)
+        return 0
+
+    pr.run_worker_pool(
+        "blinkit_oats", workers=1,
+        shard_paths=["shard0.xlsx"],
+        final_output="combined.xlsx",
+        columns=["City"], sort_key_fn=lambda r: 0,
+        popen_fn=fake_popen_fn, sleep_fn=lambda s: None,
+        ram_check_fn=lambda: 9999, time_fn=lambda: 0,
+        merge_interval_s=999999, max_restarts=5, merge_fn=fake_merge_fn,
+    )
+
+    # 1 initial launch + 5 restarts = 6 total launches, then the worker is
+    # dropped -- proves the cap is actually reachable, not silently reset
+    # by the restart-counter carry-forward on each replacement WorkerHandle.
+    assert len(launches) == 6
+    # the final merge always runs once the pool drains, regardless of outcome
+    assert len(merges) == 1
