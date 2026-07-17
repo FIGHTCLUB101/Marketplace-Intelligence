@@ -395,6 +395,18 @@ def scrape_zepto(localities=None, output_file=None):
                             for r in records:
                                 wb.append_row(r)
                         done_keys.add(f"{loc_str}|{brand}")
+                        # Back-to-back full-page navigations with zero pacing --
+                        # multiplied by running several of these workers in
+                        # parallel -- is enough sustained request pressure to
+                        # trip a soft server-side rate limit that returns a
+                        # thin/empty page instead of a recognizable block page.
+                        # Confirmed on Blinkit's identical code path: a brand
+                        # that scraped as "0 cards found" mid-run had real
+                        # inventory when checked manually seconds later
+                        # against the same locality -- not something the
+                        # render-wait in scrape_brand can catch, since the
+                        # page genuinely finishes loading, just wrong.
+                        jittered_sleep(1.5, jitter_s=1.0)
 
                 wb.save()
                 print(f"\n  💾 Saved (locality {i+1}/{total})", flush=True)
