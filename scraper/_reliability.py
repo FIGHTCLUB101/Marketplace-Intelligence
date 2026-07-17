@@ -187,6 +187,14 @@ def jittered_sleep(base_s: float, jitter_s: float = 1.0) -> None:
     time.sleep(base_s + random.uniform(0, jitter_s))
 
 
+def shard_localities(localities: list, shard_index: int, num_shards: int) -> list:
+    """Round-robin split so each shard gets an even spread across the whole
+    list rather than one contiguous block -- if a particular city has
+    connectivity/blocking trouble, that risk is spread across shards
+    instead of concentrated in whichever shard owns that city's block."""
+    return localities[shard_index::num_shards]
+
+
 def should_restart_driver(locality_index: int, restart_every: int = 25) -> bool:
     return locality_index > 0 and locality_index % restart_every == 0
 

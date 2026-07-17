@@ -10,6 +10,7 @@ from _reliability import (
     is_dead_session_error,
     jittered_sleep,
     keep_window_unminimized,
+    shard_localities,
     should_restart_driver,
     wait_for_manual_unblock,
 )
@@ -167,3 +168,20 @@ def test_incremental_workbook_resumes_from_existing_file(tmp_path):
     reloaded = load_workbook(path)
     rows = list(reloaded.active.iter_rows(values_only=True))
     assert len(rows) == 3  # header + 2 data rows
+
+
+def test_shard_localities_round_robin_covers_all_with_no_duplicates():
+    localities = list(range(10))
+    shard0 = shard_localities(localities, 0, 3)
+    shard1 = shard_localities(localities, 1, 3)
+    shard2 = shard_localities(localities, 2, 3)
+
+    assert shard0 == [0, 3, 6, 9]
+    assert shard1 == [1, 4, 7]
+    assert shard2 == [2, 5, 8]
+    assert sorted(shard0 + shard1 + shard2) == localities
+
+
+def test_shard_localities_single_shard_returns_everything():
+    localities = ["a", "b", "c"]
+    assert shard_localities(localities, 0, 1) == localities
