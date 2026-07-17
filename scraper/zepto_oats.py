@@ -166,6 +166,26 @@ def is_oats_product(name):
     oats-category data only, so those get dropped regardless of brand."""
     return "oat" in name.lower()
 
+def get_brand_keyword(brand):
+    """Returns the primary keyword to verify a product matches the searched
+    brand. Same logic as blinkit_oats.py/swiggy_oats.py's version -- works
+    unchanged on this scraper's shorter BRANDS entries (e.g. "Yoga Bar"
+    instead of "Yoga Bar Oats") since the special-cased substrings below are
+    still present either way, and the single-word fallback needs no suffix."""
+    b = brand.lower()
+    if 'the whole truth' in b: return 'whole truth'
+    if 'yoga bar' in b: return 'yoga'
+    if 'true elements' in b: return 'true'
+    return b.split(' ')[0]
+
+def is_goat_product(name):
+    """True if this product listing is GOAT Life's own product. Kept
+    regardless of which competitor brand was searched -- a GOAT Life listing
+    showing up under a competitor's search is a genuine, valuable conquest/
+    intrusion signal, not noise to be filtered out the same way an unrelated
+    substitute is."""
+    return "goat life" in name.lower()
+
 # ─────────────────────────────────────────────
 def beep():
     for _ in range(2):
@@ -277,14 +297,43 @@ def scrape_brand(driver, brand, loc_str):
 
         cards = driver.find_elements(By.TAG_NAME, "a")
         product_cards = []
+        seen_hrefs = set()
         for card in cards:
             text = card.text
-            if "ADD" in text and "₹" in text:
-                product_cards.append(card)
+            if "ADD" not in text or "₹" not in text:
+                continue
+            # Zepto renders roughly every product card twice in the DOM --
+            # confirmed live: a 30-card raw match for a search that only had
+            # 19 actually distinct products, same href both times. Capping
+            # on the raw list before deduping wasted almost half of the
+            # per-category budget below on re-counting the same product.
+            href = card.get_attribute("href")
+            if href and href in seen_hrefs:
+                continue
+            if href:
+                seen_hrefs.add(href)
+            product_cards.append(card)
 
         print(f"    🔍 '{brand} Oats': {len(product_cards)} card(s) found", flush=True)
 
-        for i, card in enumerate(product_cards[:15]):
+        keyword = get_brand_keyword(brand)
+        # own_variants_added, goat_variants_added, and intruder_variants_added
+        # are capped independently (3 each) so none of the three categories
+        # can starve out another by filling a shared slot budget first --
+        # matches the fix already applied to blinkit_oats.py and
+        # swiggy_oats.py: a flat shared cap consumed in raw page order let
+        # whichever products happened to render first crowd out GOAT Life's
+        # conquest signal (confirmed live: GOAT held only 24 of 35,708 rows
+        # across the prior full run).
+        own_variants_added = 0
+        goat_variants_added = 0
+        intruder_variants_added = 0
+
+        for i, card in enumerate(product_cards):
+            if (own_variants_added >= 3 and goat_variants_added >= 3        # STRICTLY MAX 3 VARIANTS EACH
+                    and intruder_variants_added >= 3):
+                break
+
             card_text = driver.execute_script("return arguments[0].innerText;", card)
             card_text_clean = " | ".join([x.strip() for x in card_text.split('\n') if x.strip()])
 
@@ -295,6 +344,27 @@ def scrape_brand(driver, brand, loc_str):
             img_srcs = [img.get_attribute("src") for img in card.find_elements(By.TAG_NAME, "img")]
             if has_sponsored_badge(img_srcs):
                 pdata['sponsored'] = "True"
+
+            is_own = keyword in pdata['name'].lower()
+            is_goat = is_goat_product(pdata['name'])
+            is_sponsored = pdata['sponsored'] == "True"
+            # A sponsored product that's neither the searched brand nor GOAT is a
+            # different competitor paying for placement in this brand's search --
+            # e.g. Alpino buying an ad slot when someone searches "Pintola Oats".
+            is_intruder = not is_own and not is_goat and is_sponsored
+
+            # Keep the searched brand's own products, GOAT Life rows
+            # (conquest signal), and sponsored competitor intrusions. Organic,
+            # unsponsored cross-brand matches are dropped as not relevant to
+            # any of the three signals this scraper tracks.
+            if not is_own and not is_goat and not is_intruder:
+                continue
+            if is_own and own_variants_added >= 3:
+                continue
+            if is_goat and goat_variants_added >= 3:
+                continue
+            if is_intruder and intruder_variants_added >= 3:
+                continue
 
             sp_disp = pdata['sp'].replace('Rs.', '₹').replace(' ', '')
             mrp_disp = pdata['mrp'].replace('Rs.', '₹').replace(' ', '')
@@ -313,6 +383,9 @@ def scrape_brand(driver, brand, loc_str):
                 "Reviews": pdata['reviews'],
                 "Sponsored": pdata['sponsored']
             })
+            if is_own: own_variants_added += 1
+            if is_goat: goat_variants_added += 1
+            if is_intruder: intruder_variants_added += 1
 
     except Exception as e:
         if is_dead_session_error(e):

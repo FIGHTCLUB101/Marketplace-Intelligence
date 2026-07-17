@@ -1,4 +1,7 @@
-from zepto_oats import BRANDS, has_sponsored_badge, is_oats_product, make_sort_key_fn, parse_zepto_card
+from zepto_oats import (
+    BRANDS, get_brand_keyword, has_sponsored_badge, is_goat_product, is_oats_product,
+    make_sort_key_fn, parse_zepto_card,
+)
 
 
 def test_parse_zepto_card_extracts_name_price_pack_rating():
@@ -57,6 +60,29 @@ def test_is_oats_product_true_for_oats_names():
 
 def test_is_oats_product_false_for_non_oats_names():
     assert is_oats_product("Pintola All Natural Crunchy Peanut Butter") is False
+
+
+def test_get_brand_keyword_special_cases():
+    # zepto's BRANDS entries have no " Oats" suffix, unlike blinkit/swiggy --
+    # confirms the shared special-case substrings still match either way.
+    assert get_brand_keyword("The Whole Truth") == "whole truth"
+    assert get_brand_keyword("Yoga Bar") == "yoga"
+    assert get_brand_keyword("True Elements") == "true"
+
+
+def test_get_brand_keyword_default_first_word():
+    assert get_brand_keyword("Quaker") == "quaker"
+    assert get_brand_keyword("Saffola") == "saffola"
+
+
+def test_is_goat_product_matches_case_insensitively():
+    assert is_goat_product("GOAT Life High Protein Overnight Instant Oats") is True
+    assert is_goat_product("goat life choco-nut crunch") is True
+
+
+def test_is_goat_product_false_for_competitor_names():
+    assert is_goat_product("Pintola High Protein Oats") is False
+    assert is_goat_product("Yoga Bar Protein Oats") is False
 
 
 def test_make_sort_key_fn_orders_by_locality_rank_then_brand_rank():
