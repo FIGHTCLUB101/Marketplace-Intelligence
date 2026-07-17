@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 import parallel_runner as pr
 
 
@@ -94,3 +97,12 @@ def test_run_worker_pool_gives_up_after_max_restarts():
     assert len(launches) == 6
     # the final merge always runs once the pool drains, regardless of outcome
     assert len(merges) == 1
+
+
+def test_workers_below_one_is_rejected_by_cli(tmp_path):
+    result = subprocess.run(
+        [sys.executable, str(pr.ROOT / "parallel_runner.py"), "blinkit_oats", "--workers", "0"],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert result.returncode != 0
+    assert "--workers must be at least 1" in result.stderr

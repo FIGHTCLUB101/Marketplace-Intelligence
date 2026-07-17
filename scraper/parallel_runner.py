@@ -177,4 +177,8 @@ if __name__ == "__main__":
     parser.add_argument("scraper", choices=list(SCRAPER_CONFIGS.keys()))
     parser.add_argument("--workers", type=int, default=3)
     args = parser.parse_args()
+
+    if args.workers < 1:
+        parser.error("--workers must be at least 1")
+
     supervise(args.scraper, args.workers)
