@@ -21,8 +21,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from _reliability import (
-    IncrementalWorkbook, is_dead_session_error,
-    jittered_sleep, should_restart_driver, wait_for_manual_unblock,
+    IncrementalWorkbook, defeat_visibility_throttling, is_blocked,
+    is_dead_session_error, jittered_sleep, keep_window_unminimized,
+    should_restart_driver, wait_for_manual_unblock,
 )
 
 # ─────────────────────────────────────────────
@@ -167,10 +168,22 @@ def create_driver():
     opts.add_argument('--disable-background-timer-throttling')
     opts.add_argument('--disable-backgrounding-occluded-windows')
     opts.add_argument('--disable-renderer-backgrounding')
-    # version_main intentionally omitted -- let undetected_chromedriver
-    # auto-detect the installed Chrome's major version. A hardcoded pin
-    # (previously 149) breaks the moment Chrome auto-updates past it.
-    return uc.Chrome(options=opts)
+    # The three flags above cover generic Chromium background-tab/renderer
+    # throttling, but Windows has its own, separate mechanism -- "Native
+    # Window Occlusion" -- that watches window state at the OS level and
+    # throttles Chrome when the window is minimized, independent of the
+    # above. Confirmed live: minimizing the window broke scraping even with
+    # the other three flags in place.
+    opts.add_argument('--disable-features=CalculateNativeWinOcclusion')
+    # version_main=150 pinned explicitly -- undetected_chromedriver's own
+    # auto-detect (the previous approach here) resolved to ChromeDriver 151
+    # against an actually-installed Chrome 150.0.7871.115, failing with
+    # "session not created". Bump this to match Chrome's major version
+    # (see chrome://settings/help) whenever Chrome auto-updates past it.
+    driver = uc.Chrome(options=opts, version_main=150)
+    defeat_visibility_throttling(driver)
+    keep_window_unminimized(driver)
+    return driver
 
 # ─────────────────────────────────────────────
 def set_location(driver, loc_str, wait):
@@ -223,10 +236,24 @@ def scrape_brand(driver, brand, loc_str):
     try:
         print(f"\n  🛒 Searching: {brand} Oats", flush=True)
         query = urllib.parse.quote(f"{brand} Oats")
-        driver.get(f"https://www.zeptonow.com/search?query={query}")
-        time.sleep(4)
-        if not wait_for_manual_unblock(driver, beep):
-            print("  ⚠️  Still blocked after waiting — continuing anyway.", flush=True)
+
+        # Zepto occasionally shows a rate-limit-style "Please login to
+        # continue searching" wall. Confirmed live: it does NOT clear by
+        # waiting on the same page (nothing re-fetches without a new
+        # navigation) -- it clears on a subsequent fresh driver.get(), so we
+        # retry via re-navigation rather than a long static poll (which is
+        # what wait_for_manual_unblock does, built for CAPTCHA that a human
+        # solves in place). Bounded at 3 attempts so a permanently-blocked
+        # run doesn't spin forever.
+        for attempt in range(3):
+            driver.get(f"https://www.zeptonow.com/search?query={query}")
+            time.sleep(4)
+            if not is_blocked(driver):
+                break
+            print(f"  ⚠️  Blocked (attempt {attempt+1}/3) — retrying with a fresh page load...", flush=True)
+            jittered_sleep(3.0, jitter_s=2.0)
+        else:
+            print("  ⚠️  Still blocked after 3 attempts — skipping this search.", flush=True)
 
         # Ensure cards load
         driver.execute_script("window.scrollTo(0, 500);")

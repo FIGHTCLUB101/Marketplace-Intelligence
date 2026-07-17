@@ -5,9 +5,11 @@ from openpyxl import load_workbook
 
 from _reliability import (
     IncrementalWorkbook,
+    defeat_visibility_throttling,
     is_blocked,
     is_dead_session_error,
     jittered_sleep,
+    keep_window_unminimized,
     should_restart_driver,
     wait_for_manual_unblock,
 )
@@ -17,10 +19,17 @@ class FakeDriver:
     def __init__(self, title="GOAT Life Oats", body="normal page content"):
         self.title = title
         self._body = body
+        self.cdp_calls = []
 
     @property
     def page_source(self):
         return self._body
+
+    def execute_cdp_cmd(self, cmd, params):
+        self.cdp_calls.append((cmd, params))
+
+    def set_window_rect(self, x=None, y=None, width=None, height=None):
+        self.window_rect = (x, y, width, height)
 
 
 def test_is_blocked_detects_title_keywords():
@@ -33,6 +42,52 @@ def test_is_blocked_detects_body_markers():
     assert is_blocked(FakeDriver(title="Blinkit", body="<div>Access Denied</div>")) is True
     assert is_blocked(FakeDriver(title="Blinkit", body="AwsWafIntegration challenge")) is True
     assert is_blocked(FakeDriver(title="Blinkit", body="<div>Yoga Bar Oats ₹399</div>")) is False
+
+
+def test_keep_window_unminimized_shrinks_to_small_onscreen_size():
+    driver = FakeDriver()
+    keep_window_unminimized(driver)
+    x, y, width, height = driver.window_rect
+    assert width > 0 and height > 0  # a real, non-zero, non-minimized size
+
+
+def test_keep_window_unminimized_swallows_errors():
+    class BrokenDriver(FakeDriver):
+        def set_window_rect(self, **kwargs):
+            raise Exception("no window to resize")
+
+    keep_window_unminimized(BrokenDriver())  # must not raise
+
+
+def test_defeat_visibility_throttling_installs_script_via_cdp():
+    driver = FakeDriver()
+    defeat_visibility_throttling(driver)
+    assert len(driver.cdp_calls) == 1
+    cmd, params = driver.cdp_calls[0]
+    assert cmd == "Page.addScriptToEvaluateOnNewDocument"
+    assert "'hidden'" in params["source"]
+    assert "visibilityState" in params["source"]
+
+
+def test_defeat_visibility_throttling_swallows_cdp_errors():
+    class BrokenDriver(FakeDriver):
+        def execute_cdp_cmd(self, cmd, params):
+            raise Exception("no CDP support")
+
+    defeat_visibility_throttling(BrokenDriver())  # must not raise
+
+
+def test_is_blocked_detects_zepto_login_wall():
+    assert is_blocked(FakeDriver(
+        title="Zepto",
+        body="<div>Oops! Please login to continue searching</div>",
+    )) is True
+    # Every normal Zepto page has a "Login" link in the header -- must not
+    # false-positive on the bare word.
+    assert is_blocked(FakeDriver(
+        title="Zepto",
+        body="<header><a>Login</a></header><div>True Elements Oats ₹299</div>",
+    )) is False
 
 
 def test_wait_for_manual_unblock_returns_true_immediately_if_not_blocked():

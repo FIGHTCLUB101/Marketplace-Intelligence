@@ -21,8 +21,9 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 
 from _reliability import (
-    IncrementalWorkbook, is_dead_session_error,
-    jittered_sleep, should_restart_driver, wait_for_manual_unblock,
+    IncrementalWorkbook, defeat_visibility_throttling, is_dead_session_error,
+    jittered_sleep, keep_window_unminimized, should_restart_driver,
+    wait_for_manual_unblock,
 )
 
 # ─────────────────────────────────────────────
@@ -66,10 +67,22 @@ def create_driver():
     opts.add_argument("--disable-background-timer-throttling")
     opts.add_argument("--disable-backgrounding-occluded-windows")
     opts.add_argument("--disable-renderer-backgrounding")
-    # version_main intentionally omitted -- let undetected_chromedriver
-    # auto-detect the installed Chrome's major version. A hardcoded pin
-    # (previously 149) breaks the moment Chrome auto-updates past it.
-    return uc.Chrome(options=opts)
+    # The three flags above cover generic Chromium background-tab/renderer
+    # throttling, but Windows has its own, separate mechanism -- "Native
+    # Window Occlusion" -- that watches window state at the OS level and
+    # throttles Chrome when the window is minimized, independent of the
+    # above. Confirmed live: minimizing the window broke scraping even with
+    # the other three flags in place.
+    opts.add_argument("--disable-features=CalculateNativeWinOcclusion")
+    # version_main=150 pinned explicitly -- undetected_chromedriver's own
+    # auto-detect (the previous approach here) resolved to ChromeDriver 151
+    # against an actually-installed Chrome 150.0.7871.115, failing with
+    # "session not created". Bump this to match Chrome's major version
+    # (see chrome://settings/help) whenever Chrome auto-updates past it.
+    driver = uc.Chrome(options=opts, version_main=150)
+    defeat_visibility_throttling(driver)
+    keep_window_unminimized(driver)
+    return driver
 
 def get_visible_input(driver):
     inputs = driver.find_elements(By.TAG_NAME, "input")
