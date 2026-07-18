@@ -25,11 +25,13 @@ def fetch_latest_two_scrape_run_ids(conn, platform):
 
 def fetch_snapshot_rows(conn, scrape_run_id):
     """Returns list of dicts (city_raw, locality_raw, product_name, rank,
-    selling_price, is_goat) for one scrape_run_id — the shape
-    shelf_changes.py's pure functions expect."""
+    selling_price, is_goat, brand_searched, stock_left, serviceable) for one
+    scrape_run_id — the shape shelf_changes.py's and oats_changes.py's pure
+    functions expect."""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
-            "SELECT city_raw, locality_raw, product_name, rank, selling_price, is_goat "
+            "SELECT city_raw, locality_raw, product_name, rank, selling_price, is_goat, "
+            "brand_searched, stock_left, serviceable "
             "FROM shelf_snapshots WHERE scrape_run_id = %s",
             (scrape_run_id,),
         )

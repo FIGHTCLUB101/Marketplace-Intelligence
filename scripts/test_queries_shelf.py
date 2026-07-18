@@ -112,6 +112,44 @@ def test_fetch_snapshot_rows_returns_expected_columns():
 
 
 @requires_db
+def test_fetch_snapshot_rows_includes_brand_stock_serviceable():
+    conn = get_connection()
+    scrape_run_id = None
+    snapshot_id = None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file) VALUES (%s, %s) "
+                "RETURNING scrape_run_id",
+                ("test_platform_xyz_cols", "test.xlsx"),
+            )
+            scrape_run_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                "brand_searched, product_name, selling_price, stock_left, serviceable, is_goat) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING shelf_snapshot_id",
+                (scrape_run_id, "test_platform_xyz_cols", "TestCityXYZ", "TestLocalityXYZ",
+                 "Pintola Oats", "Pintola Oats 1kg", 249.0, "In Stock", "Yes", False),
+            )
+            snapshot_id = cur.fetchone()[0]
+        conn.commit()
+
+        rows = fetch_snapshot_rows(conn, scrape_run_id)
+        assert len(rows) == 1
+        assert rows[0]["brand_searched"] == "Pintola Oats"
+        assert rows[0]["stock_left"] == "In Stock"
+        assert rows[0]["serviceable"] == "Yes"
+    finally:
+        with conn.cursor() as cur:
+            if snapshot_id is not None:
+                cur.execute("DELETE FROM shelf_snapshots WHERE shelf_snapshot_id = %s", (snapshot_id,))
+            if scrape_run_id is not None:
+                cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (scrape_run_id,))
+        conn.commit()
+        conn.close()
+
+
+@requires_db
 def test_pause_and_unpause_sku_roundtrip():
     conn = get_connection()
     try:
