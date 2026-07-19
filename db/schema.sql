@@ -65,6 +65,13 @@ CREATE TABLE IF NOT EXISTS scrape_runs (
     row_count            INTEGER NOT NULL DEFAULT 0,
     source_file           TEXT NOT NULL
 );
+-- Sprint 6 (completeness gate): a run's trust status. 'valid' runs feed the
+-- week-over-week comparison; 'quarantined' runs are kept for audit but never
+-- selected as the newest/second-newest run (see fetch_latest_two_scrape_run_ids).
+-- Reversible by design — quarantining is an UPDATE, never a DELETE, so a run
+-- wrongly flagged can be restored. Added via ALTER for tables that predate it.
+ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'valid';
+ALTER TABLE scrape_runs ADD COLUMN IF NOT EXISTS quarantine_reason TEXT;
 
 CREATE TABLE IF NOT EXISTS shelf_snapshots (
     shelf_snapshot_id  SERIAL PRIMARY KEY,

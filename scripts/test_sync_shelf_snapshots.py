@@ -123,8 +123,12 @@ def test_sync_shelf_snapshots_end_to_end(tmp_path):
 
     conn = get_connection()
     try:
-        result = sync_shelf_snapshots(xlsx_path, "blinkit", conn)
+        # enforce_gate=False: this test verifies column mapping + ingest, not
+        # the completeness gate (a 1-row input would rightly be quarantined
+        # against blinkit's real baseline — that path is covered separately).
+        result = sync_shelf_snapshots(xlsx_path, "blinkit", conn, enforce_gate=False)
         assert result["rows_inserted"] == 1
+        assert result["status"] == "valid"
 
         with conn.cursor() as cur:
             cur.execute(
@@ -136,6 +140,81 @@ def test_sync_shelf_snapshots_end_to_end(tmp_path):
     finally:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM shelf_snapshots WHERE locality_raw = %s", ("TestLocalityXYZ",))
+            cur.execute("DELETE FROM scrape_runs WHERE source_file = %s", (str(xlsx_path),))
+        conn.commit()
+        conn.close()
+
+
+def _one_row_blinkit_xlsx(path, locality):
+    pd.DataFrame([{
+        "City": "Bangalore", "Locality": locality, "Brand Searched": "Yoga Bar Oats",
+        "Product Name": "Yoga Bar Oats", "Pack Size": "400 g", "Selling Price": "₹399",
+        "MRP": "₹499", "Discount %": "20%", "Stock Left": "N/A", "Rating": "4.2",
+        "Serviceable": "Yes",
+    }]).to_excel(path, index=False)
+
+
+@requires_db
+def test_sync_quarantines_degraded_run(tmp_path):
+    from apply_schema import apply_schema
+    apply_schema()
+
+    conn = get_connection()
+    baseline_id = None
+    xlsx_path = tmp_path / "blinkit_oats_data.xlsx"
+    _one_row_blinkit_xlsx(xlsx_path, "TestDegradedXYZ")
+    try:
+        # Seed a healthy baseline valid run so the gate has a bar to fail against.
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO scrape_runs (platform, source_file, status) "
+                "VALUES ('blinkit', 'baseline_seed.xlsx', 'valid') RETURNING scrape_run_id",
+            )
+            baseline_id = cur.fetchone()[0]
+            for i in range(20):
+                cur.execute(
+                    "INSERT INTO shelf_snapshots (scrape_run_id, platform, city_raw, locality_raw, "
+                    "brand_searched, product_name) VALUES (%s,'blinkit',%s,%s,%s,%s)",
+                    (baseline_id, f"City{i % 5}", f"Loc{i}", f"Brand{i % 8}", f"Product {i}"),
+                )
+        conn.commit()
+
+        result = sync_shelf_snapshots(xlsx_path, "blinkit", conn, min_ratio=0.7)
+        assert result["status"] == "quarantined"
+        assert result["rows_inserted"] == 0
+        assert result["quarantine_reason"]  # a non-empty explanation
+
+        # The quarantined run exists (audit trail) but has NO snapshot rows.
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM scrape_runs WHERE scrape_run_id = %s", (result["scrape_run_id"],))
+            assert cur.fetchone()[0] == "quarantined"
+            cur.execute("SELECT count(*) FROM shelf_snapshots WHERE scrape_run_id = %s", (result["scrape_run_id"],))
+            assert cur.fetchone()[0] == 0
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM shelf_snapshots WHERE scrape_run_id = %s", (baseline_id,))
+            cur.execute("DELETE FROM scrape_runs WHERE source_file = %s", (str(xlsx_path),))
+            cur.execute("DELETE FROM scrape_runs WHERE scrape_run_id = %s", (baseline_id,))
+        conn.commit()
+        conn.close()
+
+
+@requires_db
+def test_sync_ingests_when_gate_passes(tmp_path):
+    from apply_schema import apply_schema
+    apply_schema()
+
+    conn = get_connection()
+    xlsx_path = tmp_path / "blinkit_oats_data.xlsx"
+    _one_row_blinkit_xlsx(xlsx_path, "TestGatePassXYZ")
+    try:
+        # min_ratio=0.0 → any coverage clears the gate; proves the ok-branch ingests.
+        result = sync_shelf_snapshots(xlsx_path, "blinkit", conn, min_ratio=0.0)
+        assert result["status"] == "valid"
+        assert result["rows_inserted"] == 1
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM shelf_snapshots WHERE locality_raw = %s", ("TestGatePassXYZ",))
             cur.execute("DELETE FROM scrape_runs WHERE source_file = %s", (str(xlsx_path),))
         conn.commit()
         conn.close()

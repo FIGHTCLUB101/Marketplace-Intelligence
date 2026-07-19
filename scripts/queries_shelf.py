@@ -7,11 +7,14 @@ from psycopg2.extras import RealDictCursor
 
 
 def fetch_latest_two_scrape_run_ids(conn, platform):
-    """Returns (newest_id, second_newest_id). second_newest_id is None if
-    only one run exists for this platform; both are None if zero exist."""
+    """Returns (newest_id, second_newest_id) for the platform's two most
+    recent VALID runs. Quarantined runs (status != 'valid') are excluded so a
+    known-bad scrape can never be selected as the source of truth. second_id
+    is None if fewer than two valid runs exist; both None if zero."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT scrape_run_id FROM scrape_runs WHERE platform = %s "
+            "SELECT scrape_run_id FROM scrape_runs "
+            "WHERE platform = %s AND status = 'valid' "
             "ORDER BY started_at DESC LIMIT 2",
             (platform,),
         )
@@ -21,6 +24,19 @@ def fetch_latest_two_scrape_run_ids(conn, platform):
     if len(ids) == 1:
         return ids[0], None
     return ids[0], ids[1]
+
+
+def set_run_status(conn, scrape_run_id, status, reason=None):
+    """Sets a scrape run's trust status ('valid' | 'quarantined'). Reversible —
+    call again with status='valid', reason=None to restore. quarantine_reason
+    records why, for the audit trail."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE scrape_runs SET status = %s, quarantine_reason = %s "
+            "WHERE scrape_run_id = %s",
+            (status, reason, scrape_run_id),
+        )
+    conn.commit()
 
 
 def fetch_snapshot_rows(conn, scrape_run_id):
@@ -36,6 +52,33 @@ def fetch_snapshot_rows(conn, scrape_run_id):
             (scrape_run_id,),
         )
         return cur.fetchall()
+
+
+def fetch_valid_run_stats(conn, platform, placeholder_names, limit=3):
+    """Per-run coverage stats — {cities, localities, brands, real_rows} — for
+    the most recent `limit` VALID runs of a platform, computed in SQL (no rows
+    loaded). Feeds the completeness-gate baseline. Quarantined runs are
+    excluded so a bad run can't inflate the bar. placeholder_names is passed in
+    (not imported) to keep this module self-contained; the real_rows definition
+    here must mirror completeness_gate.run_stats()."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(DISTINCT city_raw) AS cities, "
+            "count(DISTINCT (city_raw, locality_raw)) AS localities, "
+            "count(DISTINCT brand_searched) "
+            "  FILTER (WHERE brand_searched IS NOT NULL AND brand_searched <> '') AS brands, "
+            "count(*) FILTER (WHERE product_name IS NOT NULL AND product_name <> '' "
+            "  AND NOT (product_name = ANY(%s))) AS real_rows "
+            "FROM shelf_snapshots "
+            "WHERE scrape_run_id IN ("
+            "  SELECT scrape_run_id FROM scrape_runs "
+            "  WHERE platform = %s AND status = 'valid' "
+            "  ORDER BY started_at DESC LIMIT %s) "
+            "GROUP BY scrape_run_id",
+            (list(placeholder_names), platform, limit),
+        )
+        return [{"cities": c, "localities": l, "brands": b, "real_rows": rr}
+                for (c, l, b, rr) in cur.fetchall()]
 
 
 def fetch_drop_calendar(conn):

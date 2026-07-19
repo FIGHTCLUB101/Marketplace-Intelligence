@@ -9,13 +9,15 @@ from pathlib import Path
 import pandas as pd
 import psycopg2.extras
 
+from completeness_gate import PLACEHOLDER_NAMES, baseline_from_stats, evaluate, run_stats
+from queries_shelf import fetch_valid_run_stats
 from shelf_common import compute_loc_key, is_goat_brand, to_bool, to_float, to_int, to_str
 
 # Maps our DB column name -> the source xlsx column name for each platform.
 # None means the platform's scraper doesn't capture that field.
 PLATFORM_COLUMNS = {
     "blinkit": {
-        "brand_searched": "Brand Searched", "rank": None, "product_name": "Product Name",
+        "brand_searched": "Brand Searched", "rank": "Rank", "product_name": "Product Name",
         "pack_size": "Pack Size", "selling_price": "Selling Price", "mrp": "MRP",
         "discount_pct": "Discount %", "stock_left": "Stock Left", "rating": "Rating",
         "reviews": None, "sponsored": "Sponsored", "serviceable": "Serviceable",
@@ -27,7 +29,7 @@ PLATFORM_COLUMNS = {
         "reviews": None, "sponsored": "Sponsored", "serviceable": "Serviceable",
     },
     "swiggy": {
-        "brand_searched": "Brand Searched", "rank": None, "product_name": "Product Name",
+        "brand_searched": "Brand Searched", "rank": "Rank", "product_name": "Product Name",
         "pack_size": "Pack Size", "selling_price": "Selling Price", "mrp": "MRP",
         "discount_pct": "Discount %", "stock_left": "Stock Left", "rating": "Rating",
         "reviews": None, "sponsored": "Sponsored", "serviceable": "Serviceable",
@@ -82,36 +84,61 @@ def build_snapshot_rows(df: pd.DataFrame, platform: str, loc_key_to_id: dict) ->
     return rows
 
 
-def sync_shelf_snapshots(xlsx_path: Path, platform: str, conn) -> dict:
+def sync_shelf_snapshots(xlsx_path: Path, platform: str, conn, min_ratio=0.7, enforce_gate=True) -> dict:
+    """Loads a scraper's xlsx into Postgres, but only after the completeness
+    gate confirms the run is trustworthy. A run that fails the gate (e.g. the
+    2026-07-17 blinkit run that captured ~18% of the shelf) is still recorded
+    in scrape_runs for the audit trail, marked status='quarantined' with a
+    reason, but its snapshot rows are NOT ingested — so a degraded scrape can
+    never become the source of truth for a week-over-week comparison.
+
+    enforce_gate=False bypasses the gate (used by tests exercising column
+    mapping rather than gating). min_ratio is the fraction of the rolling
+    baseline each coverage dimension must reach to pass."""
     df = pd.read_excel(xlsx_path)
 
     with conn.cursor() as cur:
         cur.execute("SELECT loc_key, locality_id FROM localities;")
         loc_key_to_id = dict(cur.fetchall())
 
+    rows = build_snapshot_rows(df, platform, loc_key_to_id)
+    matched = sum(1 for r in rows if r["locality_id"] is not None)
+
+    # Completeness gate — evaluated before any write decision.
+    if enforce_gate:
+        baseline = baseline_from_stats(fetch_valid_run_stats(conn, platform, PLACEHOLDER_NAMES))
+        decision = evaluate(run_stats(rows), baseline, min_ratio=min_ratio)
+    else:
+        decision = {"ok": True, "reasons": []}
+
+    status = "valid" if decision["ok"] else "quarantined"
+    reason = None if decision["ok"] else "; ".join(decision["reasons"])
+
+    with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO scrape_runs (platform, source_file, row_count) "
-            "VALUES (%s, %s, %s) RETURNING scrape_run_id;",
-            (platform, str(xlsx_path), len(df)),
+            "INSERT INTO scrape_runs (platform, source_file, row_count, status, quarantine_reason) "
+            "VALUES (%s, %s, %s, %s, %s) RETURNING scrape_run_id;",
+            (platform, str(xlsx_path), len(df), status, reason),
         )
         scrape_run_id = cur.fetchone()[0]
 
-        rows = build_snapshot_rows(df, platform, loc_key_to_id)
-        matched = sum(1 for r in rows if r["locality_id"] is not None)
-        if rows:
+        inserted = 0
+        if decision["ok"] and rows:
             cols = ["scrape_run_id"] + list(rows[0].keys())
             psycopg2.extras.execute_values(
                 cur,
                 f"INSERT INTO shelf_snapshots ({', '.join(cols)}) VALUES %s",
                 [tuple([scrape_run_id] + [r[c] for c in rows[0].keys()]) for r in rows],
             )
+            inserted = len(rows)
         cur.execute(
             "UPDATE scrape_runs SET finished_at = now(), row_count = %s WHERE scrape_run_id = %s",
-            (len(rows), scrape_run_id),
+            (inserted, scrape_run_id),
         )
     conn.commit()
 
-    return {"rows_inserted": len(rows), "rows_matched": matched, "scrape_run_id": scrape_run_id}
+    return {"rows_inserted": inserted, "rows_matched": matched if decision["ok"] else 0,
+            "scrape_run_id": scrape_run_id, "status": status, "quarantine_reason": reason}
 
 
 if __name__ == "__main__":
