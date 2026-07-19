@@ -26,14 +26,28 @@ from _reliability import (
     is_dead_session_error, jittered_sleep, keep_window_unminimized,
     should_restart_driver, wait_for_manual_unblock,
 )
+from capture_guard import brand_norms, pairs_below_norm, scrape_with_yield_retry, should_retry_yield
 
 # ─────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[1]
 MAGICBRICKS_FILE = ROOT / "data" / "magicbricks_combined.xlsx"
 OUTPUT_FILE      = ROOT / "scraper" / "output" / "blinkit_goatlife_data.xlsx"
 TOP_N            = 50
+TOP_RESULTS      = 20  # capture the top N oats products shown per search, in display rank
 
 BRAND = "Goat Life"
+
+
+def is_oats_product(name):
+    """True if the product name indicates an oats product (oats-category only)."""
+    return "oat" in name.lower()
+
+
+def is_goat_product(name):
+    """True if this listing is GOAT Life's own product — always kept, since
+    tracking GOAT's rank is this scraper's entire purpose, even on the rare
+    SKU whose name doesn't contain 'oat'."""
+    return "goat life" in name.lower()
 
 COLUMNS = ["City", "Locality", "Search Term", "Rank", "Product Name",
            "Pack Size", "Selling Price", "MRP", "Discount %", "Stock Left",
@@ -256,7 +270,12 @@ def scrape_brand(driver, brand, locality, city):
 
         print(f"    🔍 '{brand}': {len(cards)} card(s) found on page", flush=True)
 
-        for rank, card in enumerate(cards[:15], 1):
+        for card in cards:
+            # Top N oats products in display rank, every brand (GOAT's own
+            # products plus competitors around it). Rank = position among the
+            # oats products kept (1..TOP_RESULTS).
+            if len(products) >= TOP_RESULTS:
+                break
             try:
                 ct = card.text
                 if not ct or len(ct) < 5: continue
@@ -264,7 +283,11 @@ def scrape_brand(driver, brand, locality, city):
                 lines = [l.strip() for l in ct.split('\n') if l.strip() and len(l.strip()) > 3]
                 name = lines[0] if lines else "Unknown"
 
-                # No keyword filtering - capturing first 15 results regardless of brand
+                # Oats-category only; a GOAT Life product is always kept even if
+                # oddly named. A dropped card does not consume a rank slot.
+                if not (is_oats_product(name) or is_goat_product(name)):
+                    continue
+
                 pack_size = "N/A"
                 m = re.search(r'(\d+(?:\.\d+)?)\s*(kg|g\b|ml|L\b|gm)\b', ct, re.I)
                 if m: pack_size = f"{m.group(1)} {m.group(2)}"
@@ -303,6 +326,7 @@ def scrape_brand(driver, brand, locality, city):
                 img_srcs = [img.get_attribute("src") for img in sponsor_scope.find_elements(By.TAG_NAME, "img")]
                 sponsored = "True" if has_sponsored_badge(img_srcs) else "False"
 
+                rank = len(products) + 1
                 products.append({
                     "City": city, "Locality": locality, "Search Term": brand, "Rank": rank,
                     "Product Name": name, "Pack Size": pack_size,
@@ -360,6 +384,8 @@ def main():
     total = len(target_localities)
     i = 0
     retries = 0
+    yield_records = []  # (city, BRAND, count) — the guard flags a locality that
+    # returns anomalously few GOAT products vs the norm (P0.3/P1.4/P1.5)
 
     try:
         while i < total:
@@ -390,7 +416,16 @@ def main():
                     wb.append_row(not_available_row(city, locality, "Not Serviceable"))
                 else:
                     print(f"\n  🛒 Searching: {BRAND}", flush=True)
-                    prods = scrape_brand(driver, BRAND, locality, city)
+                    norm = brand_norms(yield_records).get(BRAND)
+                    # P1.4: retry a locality whose GOAT yield is anomalously low.
+                    prods = scrape_with_yield_retry(
+                        lambda: scrape_brand(driver, BRAND, locality, city),
+                        norm=norm, low_ratio=0.4, max_attempts=3, base_delay=3.0,
+                    )
+                    if should_retry_yield(len(prods), norm, low_ratio=0.4):
+                        print(f"    ⚠️  LOW YIELD: {locality} returned {len(prods)} GOAT "
+                              f"product(s) (norm ~{norm}) after retries — flagged.", flush=True)
+                    yield_records.append((city, BRAND, len(prods)))
                     if not prods:
                         wb.append_row(not_available_row(city, locality))
                     else:
@@ -435,6 +470,15 @@ def main():
         print(f"\n✅ Final save → {OUTPUT_FILE}", flush=True)
         try: driver.quit()
         except: pass
+
+    # P1.5: localities where the GOAT yield stayed low → sidecar re-scrape list.
+    stragglers = pairs_below_norm(yield_records, low_ratio=0.4)
+    if stragglers:
+        sidecar = Path(OUTPUT_FILE).with_name(Path(OUTPUT_FILE).stem + "_stragglers.txt")
+        sidecar.write_text("\n".join(f"{city}|{brand}" for city, brand in stragglers), encoding="utf-8")
+        print(f"\n⚠️  {len(stragglers)} low-yield locality straggler(s) → {sidecar.name}", flush=True)
+    else:
+        print("\n✅ No low-yield stragglers — capture looks complete.", flush=True)
 
     print("\n" + "="*65, flush=True)
     print("  SCRAPING COMPLETE!", flush=True)

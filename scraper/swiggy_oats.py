@@ -25,6 +25,7 @@ from _reliability import (
     jittered_sleep, keep_window_unminimized, shard_localities, should_restart_driver,
     wait_for_manual_unblock,
 )
+from capture_guard import brand_norms, pairs_below_norm, scrape_with_yield_retry, should_retry_yield
 
 # ─────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,12 +36,13 @@ TOP_N            = 50
 BRANDS = [
     "Pintola Oats", "Yoga Bar Oats", "Quaker Oats", "MuscleBlaze Oats",
     "Alpino Oats", "True Elements Oats", "Saffola Oats", "Cosmix Oats",
-    "SuperYou Oats", "The Whole Truth Oats",
+    "SuperYou Oats", "The Whole Truth Oats", "MiHeSo Oats",
 ]
 
-COLUMNS = ["City", "Locality", "Brand Searched", "Product Name", "Protein Info",
+COLUMNS = ["City", "Locality", "Brand Searched", "Rank", "Product Name", "Protein Info",
            "Sponsored", "Pack Size", "Selling Price", "MRP", "Discount %",
            "Stock Left", "Rating", "Serviceable"]
+TOP_RESULTS = 20  # capture the top N oats products shown per search, in display rank
 
 # ─────────────────────────────────────────────
 def extract_buy_price(price_str):
@@ -309,24 +311,14 @@ def scrape_brand(driver, brand, locality, city):
 
         print(f"    🔍 '{brand}': {len(cards)} card block(s) found on page", flush=True)
 
-        keyword = get_brand_keyword(brand)
-        # own_variants_added, goat_variants_added, and intruder_variants_added
-        # are capped independently (3 each) so none of the three categories
-        # can starve out another by filling a shared slot budget first -- this
-        # was the actual bug behind GOAT never appearing: a flat shared cap of
-        # 15, consumed in raw page order, meant whichever ~15 oats products
-        # Swiggy's own search relevance happened to surface first (frequently
-        # not including GOAT Life at all -- confirmed live, 77% of searches
-        # hit that cap) silently crowded out everything else.
-        own_variants_added = 0
-        goat_variants_added = 0
-        intruder_variants_added = 0
-
+        # Capture the top N oats products exactly as Swiggy's search ranks them,
+        # regardless of brand — the searched brand's products AND every
+        # competitor / GOAT product that also surfaces. Rank = display position
+        # among the oats products kept (1..TOP_RESULTS). Unsponsored cross-brand
+        # matches are now KEPT (they are the shelf), not dropped.
         for card in cards:
-            if (own_variants_added >= 3 and goat_variants_added >= 3        # STRICTLY MAX 3 VARIANTS EACH
-                    and intruder_variants_added >= 3):
+            if len(products) >= TOP_RESULTS:
                 break
-
             try:
                 ct = card.text
                 if not ct or len(ct) < 5: continue
@@ -334,46 +326,23 @@ def scrape_brand(driver, brand, locality, city):
                 parsed_prods = parse_card_block(ct)
 
                 for p in parsed_prods:
+                    if len(products) >= TOP_RESULTS:
+                        break
                     if not is_oats_product(p['name']): continue
 
-                    is_own = keyword in p['name'].lower()
-                    is_goat = is_goat_product(p['name'])
-                    is_sponsored = p['sponsored'] == "True"
-                    # A sponsored product that's neither the searched brand nor GOAT is a
-                    # different competitor paying for placement in this brand's search --
-                    # e.g. Alpino buying an ad slot when someone searches "Pintola Oats".
-                    is_intruder = not is_own and not is_goat and is_sponsored
-
-                    # Keep the searched brand's own products, GOAT Life rows
-                    # (conquest signal), and sponsored competitor intrusions.
-                    # Organic, unsponsored cross-brand matches -- Swiggy's own
-                    # "similar products" noise, which is what was drowning out
-                    # GOAT under the old shared cap -- are dropped as not
-                    # relevant to any of the three signals this scraper tracks.
-                    if not is_own and not is_goat and not is_intruder:
-                        continue
-                    if is_own and own_variants_added >= 3:
-                        continue
-                    if is_goat and goat_variants_added >= 3:
-                        continue
-                    if is_intruder and intruder_variants_added >= 3:
-                        continue
-
+                    rank = len(products) + 1
                     products.append({
-                        "City": city, "Locality": locality, "Brand Searched": brand,
+                        "City": city, "Locality": locality, "Brand Searched": brand, "Rank": rank,
                         "Product Name": p['name'], "Protein Info": p['protein_info'], "Sponsored": p['sponsored'],
                         "Pack Size": p['pack_size'], "Selling Price": p['sp'], "MRP": p['mrp'], "Discount %": p['discount'],
                         "Stock Left": p['stock'], "Rating": p['rating'], "Serviceable": "Yes",
                     })
 
                     sponsored_marker = "[SPONS]" if p['sponsored'] == "True" else ""
-                    print(f"    ✅ {p['name'][:25]:<25} {sponsored_marker:<10} {p['sp']} (MRP:{p['mrp']})", flush=True)
-                    if is_own: own_variants_added += 1
-                    if is_goat: goat_variants_added += 1
-                    if is_intruder: intruder_variants_added += 1
+                    print(f"    ✅ #{rank:<2} {p['name'][:25]:<25} {sponsored_marker:<8} {p['sp']} (MRP:{p['mrp']})", flush=True)
             except: pass
 
-        if own_variants_added == 0 and goat_variants_added == 0 and intruder_variants_added == 0:
+        if not products:
             print(f"    ⚪ No matching variants found for '{brand}'", flush=True)
 
     except Exception as e:
@@ -385,7 +354,7 @@ def scrape_brand(driver, brand, locality, city):
 # ─────────────────────────────────────────────
 def not_available_row(city, locality, brand, reason="Not Available"):
     return {
-        "City": city, "Locality": locality, "Brand Searched": brand,
+        "City": city, "Locality": locality, "Brand Searched": brand, "Rank": "N/A",
         "Product Name": reason, "Protein Info": "N/A", "Sponsored": "N/A",
         "Pack Size": "N/A", "Selling Price": "N/A", "MRP": "N/A", "Discount %": "N/A",
         "Stock Left": "N/A", "Rating": "N/A", "Serviceable": "Yes" if reason == "Not Available" else "No",
@@ -449,6 +418,7 @@ def main(target_localities=None, output_file=None):
     total = len(target_localities)
     i = 0
     retries = 0
+    yield_records = []  # (city, brand, count) — feeds the capture guard (P0.3/P1.4/P1.5)
 
     try:
         while i < total:
@@ -478,9 +448,19 @@ def main(target_localities=None, output_file=None):
                         wb.append_row(not_available_row(city, locality, b, "Location Error"))
                         done_keys.add(f"{city}|{locality}|{b}")
                 else:
+                    norms = brand_norms(yield_records)
                     for brand in brands_todo:
                         print(f"\n  🛒 Searching: {brand}", flush=True)
-                        prods = scrape_brand(driver, brand, locality, city)
+                        norm = norms.get(brand)
+                        # P1.4: retry an anomalously low yield (keep best attempt).
+                        prods = scrape_with_yield_retry(
+                            lambda: scrape_brand(driver, brand, locality, city),
+                            norm=norm, low_ratio=0.4, max_attempts=3, base_delay=3.0,
+                        )
+                        if should_retry_yield(len(prods), norm, low_ratio=0.4):
+                            print(f"    ⚠️  LOW YIELD: '{brand}' returned {len(prods)} "
+                                  f"(norm ~{norm}) after retries — flagged as straggler.", flush=True)
+                        yield_records.append((city, brand, len(prods)))
                         if not prods:
                             wb.append_row(not_available_row(city, locality, brand))
                         else:
@@ -529,6 +509,15 @@ def main(target_localities=None, output_file=None):
         print(f"\n✅ Final save → {output_file}", flush=True)
         try: driver.quit()
         except: pass
+
+    # P1.5: low-yield stragglers → sidecar re-scrape list (gate is the backstop).
+    stragglers = pairs_below_norm(yield_records, low_ratio=0.4)
+    if stragglers:
+        sidecar = Path(output_file).with_name(Path(output_file).stem + "_stragglers.txt")
+        sidecar.write_text("\n".join(f"{city}|{brand}" for city, brand in stragglers), encoding="utf-8")
+        print(f"\n⚠️  {len(stragglers)} low-yield (city, brand) straggler(s) → {sidecar.name}", flush=True)
+    else:
+        print("\n✅ No low-yield stragglers — capture looks complete.", flush=True)
 
     print("\n" + "="*65, flush=True)
     print("  SCRAPING COMPLETE!", flush=True)

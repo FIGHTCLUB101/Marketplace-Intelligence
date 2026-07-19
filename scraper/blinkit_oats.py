@@ -26,6 +26,7 @@ from _reliability import (
     is_dead_session_error, jittered_sleep, keep_window_unminimized,
     shard_localities, should_restart_driver, wait_for_manual_unblock,
 )
+from capture_guard import brand_norms, pairs_below_norm, scrape_with_yield_retry, should_retry_yield
 
 # ─────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,10 +45,12 @@ BRANDS = [
     "Cosmix Oats",
     "SuperYou Oats",
     "The Whole Truth Oats",
+    "MiHeSo Oats",
 ]
 
-COLUMNS = ["City", "Locality", "Brand Searched", "Product Name", "Pack Size",
+COLUMNS = ["City", "Locality", "Brand Searched", "Rank", "Product Name", "Pack Size",
            "Selling Price", "MRP", "Discount %", "Stock Left", "Rating", "Sponsored", "Serviceable"]
+TOP_RESULTS = 20  # capture the top N oats products shown per search, in display rank
 
 # ─────────────────────────────────────────────
 def extract_buy_price(price_str):
@@ -293,17 +296,12 @@ def scrape_brand(driver, brand, locality, city):
 
         print(f"    🔍 '{brand}': {len(cards)} card(s) found on page", flush=True)
 
-        keyword = get_brand_keyword(brand)
-        # own_variants_added, goat_variants_added, and intruder_variants_added
-        # are capped independently (3 each) so none of the three categories
-        # can starve out another by filling a shared slot budget first.
-        own_variants_added = 0
-        goat_variants_added = 0
-        intruder_variants_added = 0
-
         for card in cards:
-            if (own_variants_added >= 3 and goat_variants_added >= 3        # STRICTLY MAX 3 VARIANTS EACH
-                    and intruder_variants_added >= 3):
+            # Capture the top N oats products exactly as the search page ranks
+            # them, regardless of brand — the searched brand's products AND every
+            # competitor / GOAT product that also surfaces in this search. Rank =
+            # display position among the oats products kept (1..TOP_RESULTS).
+            if len(products) >= TOP_RESULTS:
                 break
 
             try:
@@ -313,47 +311,23 @@ def scrape_brand(driver, brand, locality, city):
                 lines = [l.strip() for l in ct.split('\n') if l.strip() and len(l.strip()) > 3]
                 name = lines[0] if lines else "Unknown"
 
-                # This scraper is oats-category data only -- a matched brand's
-                # non-oats products (e.g. Pintola's peanut butter) don't belong
-                # here regardless of which category below they'd otherwise fall
-                # into, so this gate runs before own/goat/intruder categorization.
+                # Oats-category data only — a non-oats product that surfaces in
+                # the search (e.g. Pintola's peanut butter) is dropped and does
+                # not consume a rank slot.
                 if not is_oats_product(name):
                     continue
 
-                is_own = keyword in name.lower()
-                is_goat = is_goat_product(name)
-
-                # The "Ad" badge image lives outside the 3-level card boundary
-                # above (which is deliberately tight so card.text doesn't pick
-                # up neighboring cards) -- confirmed live via DOM trace: from
-                # the ADD button, the badge only enters scope 5 levels up, not
-                # 3. Widen just for this lookup; if the extra walk fails for
-                # any reason, fall back to the tighter (badge-blind) scope
-                # rather than erroring the whole card out.
+                # Sponsored badge is kept as a signal (which listings are paid
+                # placement) but no longer decides whether a product is captured.
+                # The "Ad" badge image lives ~5 levels up from the ADD button,
+                # outside the tight card boundary; widen just for this lookup and
+                # fall back to the tighter scope if the walk fails.
                 try:
                     sponsor_scope = card.find_element(By.XPATH, "./../..")
                 except Exception:
                     sponsor_scope = card
                 img_srcs = [img.get_attribute("src") for img in sponsor_scope.find_elements(By.TAG_NAME, "img")]
                 is_sponsored = has_sponsored_badge(img_srcs)
-                # A sponsored product that's neither the searched brand nor GOAT is a
-                # different competitor paying for placement in this brand's search —
-                # e.g. Alpino buying an ad slot when someone searches "Pintola Oats".
-                is_intruder = not is_own and not is_goat and is_sponsored
-
-                # 🛑 FILTER: Keep the searched brand's own products, GOAT Life rows
-                # (conquest signal), and sponsored competitor intrusions (a different
-                # brand buying paid placement here). Blinkit does also surface
-                # unsponsored, unrelated substitutes (e.g. when a brand is out of
-                # stock) — those are still dropped as noise, not signal.
-                if not is_own and not is_goat and not is_intruder:
-                    continue
-                if is_own and own_variants_added >= 3:
-                    continue
-                if is_goat and goat_variants_added >= 3:
-                    continue
-                if is_intruder and intruder_variants_added >= 3:
-                    continue
 
                 pack_size = "N/A"
                 m = re.search(r'(\d+(?:\.\d+)?)\s*(kg|g\b|ml|L\b|gm)\b', ct, re.I)
@@ -378,17 +352,15 @@ def scrape_brand(driver, brand, locality, city):
                 rm = re.search(r'(\d\.\d)\s*\(', ct)
                 if rm and 1.0 <= float(rm.group(1)) <= 5.0: rating = rm.group(1)
 
+                rank = len(products) + 1
                 products.append({
                     "City": city, "Locality": locality, "Brand Searched": brand,
-                    "Product Name": name, "Pack Size": pack_size,
+                    "Rank": rank, "Product Name": name, "Pack Size": pack_size,
                     "Selling Price": sp, "MRP": mrp, "Discount %": disc,
                     "Stock Left": stock, "Rating": rating,
                     "Sponsored": "True" if is_sponsored else "False", "Serviceable": "Yes",
                 })
-                print(f"    ✅ {name[:38]:<38} {pack_size:<8} {sp} (MRP:{mrp})", flush=True)
-                if is_own: own_variants_added += 1
-                if is_goat: goat_variants_added += 1
-                if is_intruder: intruder_variants_added += 1
+                print(f"    ✅ #{rank:<2} {name[:36]:<36} {pack_size:<8} {sp} (MRP:{mrp})", flush=True)
             except: pass
 
     except Exception as e:
@@ -400,7 +372,7 @@ def scrape_brand(driver, brand, locality, city):
 # ─────────────────────────────────────────────
 def not_available_row(city, locality, brand, reason="Not Available"):
     return {
-        "City": city, "Locality": locality, "Brand Searched": brand,
+        "City": city, "Locality": locality, "Brand Searched": brand, "Rank": "N/A",
         "Product Name": reason, "Pack Size": "N/A", "Selling Price": "N/A",
         "MRP": "N/A", "Discount %": "N/A", "Stock Left": "N/A", "Rating": "N/A",
         "Sponsored": "N/A", "Serviceable": "Yes" if reason == "Not Available" else "No",
@@ -464,6 +436,11 @@ def main(target_localities=None, output_file=None):
     total = len(target_localities)
     i = 0
     retries = 0
+    # P0.3/P1.4/P1.5: per-(city, brand) yield history. As the run progresses,
+    # each brand establishes a norm; a search that comes back far below its
+    # brand's norm is retried on the spot (the run-424 false-zero fix), and any
+    # that never recover are reported as stragglers at the end.
+    yield_records = []
 
     try:
         while i < total:
@@ -498,9 +475,23 @@ def main(target_localities=None, output_file=None):
                         wb.append_row(not_available_row(city, locality, b, "Not Serviceable"))
                         done_keys.add(f"{city}|{locality}|{b}")
                 else:
+                    norms = brand_norms(yield_records)
                     for brand in brands_todo:
                         print(f"\n  🛒 Searching: {brand}", flush=True)
-                        prods = scrape_brand(driver, brand, locality, city)
+                        norm = norms.get(brand)
+                        # P1.4: if the first attempt is anomalously low against
+                        # this brand's established norm, back off and retry,
+                        # keeping the best attempt. No norm yet -> single try.
+                        prods = scrape_with_yield_retry(
+                            lambda: scrape_brand(driver, brand, locality, city),
+                            norm=norm, low_ratio=0.4, max_attempts=3, base_delay=3.0,
+                        )
+                        # P0.3: even after retry, warn loudly if still degraded,
+                        # so the operator sees the run degrading in real time.
+                        if should_retry_yield(len(prods), norm, low_ratio=0.4):
+                            print(f"    ⚠️  LOW YIELD: '{brand}' returned {len(prods)} "
+                                  f"(norm ~{norm}) after retries — flagged as straggler.", flush=True)
+                        yield_records.append((city, brand, len(prods)))
                         if not prods:
                             wb.append_row(not_available_row(city, locality, brand))
                         else:
@@ -561,6 +552,18 @@ def main(target_localities=None, output_file=None):
         print(f"\n✅ Final save → {output_file}", flush=True)
         try: driver.quit()
         except: pass
+
+    # P1.5: report (city, brand) pairs that ended below their brand's norm even
+    # after in-run retries — the straggler queue to re-scrape before trusting
+    # this run. Written to a sidecar file next to the output for a targeted
+    # re-run; the completeness gate (P0.1) is the backstop if too many remain.
+    stragglers = pairs_below_norm(yield_records, low_ratio=0.4)
+    if stragglers:
+        sidecar = Path(output_file).with_name(Path(output_file).stem + "_stragglers.txt")
+        sidecar.write_text("\n".join(f"{city}|{brand}" for city, brand in stragglers), encoding="utf-8")
+        print(f"\n⚠️  {len(stragglers)} low-yield (city, brand) straggler(s) → {sidecar.name}", flush=True)
+    else:
+        print("\n✅ No low-yield stragglers — capture looks complete.", flush=True)
 
     print("\n" + "="*65, flush=True)
     print("  SCRAPING COMPLETE!", flush=True)
